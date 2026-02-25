@@ -1,8 +1,9 @@
 defmodule JidoMcp.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/agentjido/jido_mcp"
+  @description "MCP integration package for the Jido ecosystem"
 
   def project do
     [
@@ -15,7 +16,7 @@ defmodule JidoMcp.MixProject do
 
       # Documentation
       name: "Jido MCP",
-      description: "MCP integration package for the Jido ecosystem",
+      description: @description,
       source_url: @source_url,
       homepage_url: @source_url,
       package: package(),
@@ -32,11 +33,11 @@ defmodule JidoMcp.MixProject do
 
   defp deps do
     [
-      {:jido, path: "../jido"},
-      {:anubis_mcp, path: "../anubis-mcp"},
+      {:jido, "~> 2.0"},
+      {:anubis_mcp, "~> 0.17.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:mimic, "~> 2.0", only: :test}
     ]
   end
@@ -44,15 +45,25 @@ defmodule JidoMcp.MixProject do
   defp aliases do
     [
       setup: ["deps.get"],
-      test: "test"
+      test: "test",
+      "release.check": [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "cmd env MIX_ENV=test mix test",
+        "cmd mix hex.build"
+      ]
     ]
   end
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README.md"],
+      files: ["lib", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
+      maintainers: ["Mike Hostetler"],
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => @source_url}
+      links: %{
+        "Documentation" => "https://hexdocs.pm/jido_mcp",
+        "GitHub" => @source_url
+      }
     ]
   end
 
@@ -60,7 +71,8 @@ defmodule JidoMcp.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md"]
+      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md", "LICENSE"]
     ]
   end
 end
