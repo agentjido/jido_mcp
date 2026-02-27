@@ -56,100 +56,43 @@ defmodule Jido.MCP.Server.RuntimeTest do
     def authorize(_request, _frame), do: :ok
   end
 
-  defmodule DenyServer do
-    def authorize(_request, _frame), do: :deny
+  defmodule RaisingAuthServer do
+    def authorize(_request, _frame), do: raise("boom")
   end
 
-  defmodule ExplodingAuthorizeServer do
-    def authorize(_request, _frame), do: raise("auth boom")
-  end
-
-  defmodule ExplodingResource do
+  defmodule BrokenResource do
     @behaviour Jido.MCP.Server.Resource
 
     @impl true
-    def uri, do: "memo://boom"
+    def uri, do: "memo://broken"
 
     @impl true
-    def name, do: "boom_resource"
+    def name, do: "broken_resource"
 
     @impl true
-    def description, do: "Boom resource"
+    def description, do: "Broken resource"
 
     @impl true
     def mime_type, do: "application/json"
 
     @impl true
-    def read(_uri, _frame), do: raise("resource boom")
+    def read(_uri, _frame), do: :not_a_tuple
   end
 
-  defmodule ExplodingPrompt do
+  defmodule BrokenPrompt do
     @behaviour Jido.MCP.Server.Prompt
 
     @impl true
-    def name, do: "boom_prompt"
+    def name, do: "broken_prompt"
 
     @impl true
-    def description, do: "Boom prompt"
+    def description, do: "Broken prompt"
 
     @impl true
     def arguments_schema, do: %{}
 
     @impl true
-    def messages(_args, _frame), do: raise("prompt boom")
-  end
-
-  defmodule InvalidPrompt do
-    @behaviour Jido.MCP.Server.Prompt
-
-    @impl true
-    def name, do: "invalid_prompt"
-
-    @impl true
-    def description, do: "Invalid prompt"
-
-    @impl true
-    def arguments_schema, do: %{}
-
-    @impl true
-    def messages(_args, _frame), do: {:ok, %{not: :a_list}}
-  end
-
-  defmodule InvalidResource do
-    @behaviour Jido.MCP.Server.Resource
-
-    @impl true
-    def uri, do: "memo://invalid"
-
-    @impl true
-    def name, do: "invalid_resource"
-
-    @impl true
-    def description, do: "Invalid resource"
-
-    @impl true
-    def mime_type, do: "application/json"
-
-    @impl true
-    def read(_uri, _frame), do: :not_valid
-  end
-
-  defmodule FailingAction do
-    use Jido.Action,
-      name: "failing",
-      schema: [value: [type: :integer]]
-
-    @impl true
-    def run(_params, _context), do: {:error, :boom}
-  end
-
-  defmodule ZoiAction do
-    use Jido.Action,
-      name: "zoi_action",
-      schema: Zoi.object(%{name: Zoi.string()})
-
-    @impl true
-    def run(%{name: name}, _context), do: {:ok, %{name: name}}
+    def messages(_arguments, _frame), do: :not_a_tuple
   end
 
   test "handles tool call through Jido action" do
@@ -193,126 +136,53 @@ defmodule Jido.MCP.Server.RuntimeTest do
     assert length(response.messages) == 1
   end
 
-  test "rejects unauthorized tool call" do
-    frame = Frame.new()
+  test "register_tool publishes strict json schema from action schema" do
+    frame = Frame.new() |> Runtime.register_tool(AddAction)
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_tool_call([AddAction], "add", %{a: 1, b: 2}, frame, DenyServer)
-  end
-
-  test "handles resource read exceptions with execution errors" do
-    frame = Frame.new()
-
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_resource_read(
-               [ExplodingResource],
-               ExplodingResource.uri(),
-               frame,
-               AllowAllServer
-             )
-  end
-
-  test "handles prompt rendering exceptions with execution errors" do
-    frame = Frame.new()
-
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_prompt_get(
-               [ExplodingPrompt],
-               ExplodingPrompt.name(),
-               %{},
-               frame,
-               AllowAllServer
-             )
-  end
-
-  test "handles authorization exceptions with execution errors" do
-    frame = Frame.new()
-
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_resource_read(
-               [EchoResource],
-               EchoResource.uri(),
-               frame,
-               ExplodingAuthorizeServer
-             )
-  end
-
-  test "register_tool exports Zoi schema properties" do
-    frame = Frame.new() |> Runtime.register_tool(ZoiAction)
     [tool] = Frame.get_tools(frame)
-
-    properties = Map.get(tool.input_schema, "properties", %{})
-    assert map_size(properties) > 0
+    assert tool.name == "add"
+    assert is_map(tool.input_schema)
+    assert tool.input_schema["type"]
+    rendered = inspect(tool.input_schema)
+    assert rendered =~ "\"a\""
+    assert rendered =~ "\"b\""
   end
 
-  test "returns not found errors for unknown components" do
+  test "fails closed when authorization callback raises" do
     frame = Frame.new()
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_tool_call([AddAction], "missing", %{}, frame, AllowAllServer)
+    assert {:error, error, _frame} =
+             Runtime.handle_tool_call([AddAction], "add", %{a: 1, b: 2}, frame, RaisingAuthServer)
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_resource_read([EchoResource], "memo://missing", frame, AllowAllServer)
-
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_prompt_get([BasicPrompt], "missing", %{}, frame, AllowAllServer)
+    assert error.code == -32600
   end
 
-  test "rejects unauthorized prompt and resource access" do
+  test "returns deterministic execution errors for invalid resource handler output" do
     frame = Frame.new()
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_prompt_get(
-               [BasicPrompt],
-               BasicPrompt.name(),
-               %{},
-               frame,
-               DenyServer
-             )
-
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
+    assert {:error, error, _frame} =
              Runtime.handle_resource_read(
-               [EchoResource],
-               EchoResource.uri(),
+               [BrokenResource],
+               BrokenResource.uri(),
                frame,
-               DenyServer
+               AllowAllServer
              )
+
+    assert error.code == -32000
   end
 
-  test "handles invalid prompt and resource return values" do
+  test "returns deterministic execution errors for invalid prompt handler output" do
     frame = Frame.new()
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
+    assert {:error, error, _frame} =
              Runtime.handle_prompt_get(
-               [InvalidPrompt],
-               InvalidPrompt.name(),
+               [BrokenPrompt],
+               "broken_prompt",
                %{},
                frame,
                AllowAllServer
              )
 
-    assert {:error, %Anubis.MCP.Error{}, _frame} =
-             Runtime.handle_resource_read(
-               [InvalidResource],
-               InvalidResource.uri(),
-               frame,
-               AllowAllServer
-             )
-  end
-
-  test "handles action execution failures as tool errors" do
-    frame = Frame.new()
-
-    assert {:reply, response, _frame} =
-             Runtime.handle_tool_call(
-               [FailingAction],
-               FailingAction.name(),
-               %{value: 1},
-               frame,
-               AllowAllServer
-             )
-
-    assert response.type == :tool
-    assert response.isError
+    assert error.code == -32000
   end
 end

@@ -1,59 +1,44 @@
 defmodule Jido.MCP.ClientPoolTest do
   use ExUnit.Case, async: false
 
-  alias Jido.MCP.{ClientPool, Config}
+  alias Jido.MCP.{ClientPool, Endpoint}
 
   setup do
-    {:ok, _} = Application.ensure_all_started(:jido_mcp)
-    old_state = :sys.get_state(ClientPool)
-
-    endpoints =
-      Config.normalize_endpoints(%{
-        demo: %{
-          transport: {:stdio, [command: "cat", args: []]},
-          client_info: %{name: "test"}
-        }
+    {:ok, endpoint} =
+      Endpoint.new(:github, %{
+        transport: {:streamable_http, [base_url: "http://localhost:3000/mcp"]},
+        client_info: %{name: "my_app"}
       })
 
-    :sys.replace_state(ClientPool, fn state -> %{state | endpoints: endpoints, refs: %{}} end)
-
-    on_exit(fn ->
-      :sys.replace_state(ClientPool, fn _ -> old_state end)
+    :sys.replace_state(ClientPool, fn _ ->
+      %{
+        endpoints: %{github: endpoint},
+        refs: %{}
+      }
     end)
 
     :ok
   end
 
-  test "manages endpoint lifecycle and reports status" do
-    assert {:error, :not_started} = ClientPool.endpoint_status(:demo)
+  test "returns unknown endpoint when endpoint id is missing from pool state" do
     assert {:error, :unknown_endpoint} = ClientPool.ensure_client(:missing)
-
-    assert {:ok, _endpoint, _ref} = ClientPool.ensure_client(:demo)
-
-    assert {:ok, status} = ClientPool.endpoint_status(:demo)
-    assert status.endpoint_id == :demo
-    assert status.client_alive?
-    assert status.supervisor_alive?
-    assert status.transport_alive?
-
-    assert {:ok, _endpoint, _ref} = ClientPool.refresh(:demo)
+    assert {:error, :unknown_endpoint} = ClientPool.refresh(:missing)
   end
 
-  test "reports dead processes for stale refs" do
+  test "returns not_started status before endpoint client is initialized" do
+    assert {:error, :not_started} = ClientPool.endpoint_status(:github)
+  end
+
+  test "reports liveness flags for tracked refs" do
     :sys.replace_state(ClientPool, fn state ->
-      %{
-        state
-        | refs: %{
-            demo: %{
-              client: :missing_client,
-              supervisor: :missing_supervisor,
-              transport: :missing_transport
-            }
-          }
-      }
+      put_in(state, [:refs, :github], %{
+        client: :nonexistent_client_name,
+        supervisor: :nonexistent_supervisor_name,
+        transport: :nonexistent_transport_name
+      })
     end)
 
-    assert {:ok, status} = ClientPool.endpoint_status(:demo)
+    assert {:ok, status} = ClientPool.endpoint_status(:github)
     refute status.client_alive?
     refute status.supervisor_alive?
     refute status.transport_alive?

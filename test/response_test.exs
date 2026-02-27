@@ -24,6 +24,7 @@ defmodule Jido.MCP.ResponseTest do
     assert {:error, error} = Response.normalize(:demo, "tools/call", {:ok, raw})
     assert error.type == :tool_error
     assert error.message == "boom"
+    assert error.method == "tools/call"
   end
 
   test "normalizes transport error" do
@@ -32,6 +33,19 @@ defmodule Jido.MCP.ResponseTest do
     assert {:error, error} = Response.normalize(:demo, "tools/list", {:error, reason})
     assert error.type == :transport
     assert error.endpoint == :demo
+    assert error.method == "tools/list"
+  end
+
+  test "classifies validation and protocol errors consistently" do
+    assert {:error, parse_error} =
+             Response.normalize(:demo, "tools/call", {:error, %{reason: :parse_error}})
+
+    assert parse_error.type == :validation
+
+    assert {:error, protocol_error} =
+             Response.normalize(:demo, "tools/call", {:error, {:error, :invalid_request}})
+
+    assert protocol_error.type == :protocol
   end
 
   test "classifies protocol and validation errors" do

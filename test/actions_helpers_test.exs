@@ -4,24 +4,24 @@ defmodule Jido.MCP.Actions.HelpersTest do
   alias Jido.MCP.Actions.Helpers
 
   setup do
-    original = Application.get_env(:jido_mcp, :endpoints)
+    previous = Application.get_env(:jido_mcp, :endpoints)
 
     Application.put_env(:jido_mcp, :endpoints, %{
       github: %{
-        transport: {:stdio, [command: "cat", args: []]},
-        client_info: %{name: "test"}
+        transport: {:streamable_http, [base_url: "http://localhost:3000/mcp"]},
+        client_info: %{name: "my_app"}
       },
       filesystem: %{
-        transport: {:stdio, [command: "cat", args: []]},
-        client_info: %{name: "test"}
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
       }
     })
 
     on_exit(fn ->
-      if is_nil(original) do
+      if is_nil(previous) do
         Application.delete_env(:jido_mcp, :endpoints)
       else
-        Application.put_env(:jido_mcp, :endpoints, original)
+        Application.put_env(:jido_mcp, :endpoints, previous)
       end
     end)
 
@@ -42,13 +42,11 @@ defmodule Jido.MCP.Actions.HelpersTest do
              Helpers.resolve_endpoint_id(%{endpoint_id: :filesystem}, context)
   end
 
-  test "rejects invalid allowed_endpoints values" do
-    assert {:error, :invalid_allowed_endpoints} =
-             Helpers.resolve_endpoint_id(%{endpoint_id: :github}, %{
-               allowed_endpoints: ["missing"]
-             })
+  test "returns unknown endpoint for unconfigured endpoint names" do
+    assert {:error, :unknown_endpoint} =
+             Helpers.resolve_endpoint_id(%{endpoint_id: :missing}, %{})
 
-    assert {:error, :invalid_allowed_endpoints} =
-             Helpers.resolve_endpoint_id(%{endpoint_id: :github}, %{allowed_endpoints: :github})
+    assert {:error, :unknown_endpoint} =
+             Helpers.resolve_endpoint_id(%{endpoint_id: "missing"}, %{})
   end
 end

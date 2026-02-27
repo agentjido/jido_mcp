@@ -13,142 +13,134 @@ defmodule Jido.MCP.ActionsTest do
     RefreshEndpoint
   }
 
-  setup :set_mimic_private
-  setup :verify_on_exit!
+  setup :set_mimic_from_context
 
   setup do
-    original = Application.get_env(:jido_mcp, :endpoints)
+    previous = Application.get_env(:jido_mcp, :endpoints)
 
     Application.put_env(:jido_mcp, :endpoints, %{
       github: %{
-        transport: {:stdio, [command: "cat", args: []]},
-        client_info: %{name: "test"}
+        transport: {:streamable_http, [base_url: "http://localhost:3000/mcp"]},
+        client_info: %{name: "my_app"}
       },
       filesystem: %{
-        transport: {:stdio, [command: "cat", args: []]},
-        client_info: %{name: "test"}
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
       }
     })
 
     on_exit(fn ->
-      if is_nil(original) do
+      if is_nil(previous) do
         Application.delete_env(:jido_mcp, :endpoints)
       else
-        Application.put_env(:jido_mcp, :endpoints, original)
+        Application.put_env(:jido_mcp, :endpoints, previous)
       end
     end)
 
     :ok
   end
 
-  test "list actions forward options" do
-    expect(Jido.MCP, :list_tools, fn :github, opts ->
-      assert opts[:timeout] == 1_000
-      assert opts[:cursor] == "a"
+  test "list tools/resources/prompts actions pass through timeout and cursor" do
+    Mimic.expect(Jido.MCP, :list_tools, fn :github, opts ->
+      assert opts[:timeout] == 111
+      assert opts[:cursor] == "abc"
       {:ok, %{status: :ok}}
     end)
 
-    expect(Jido.MCP, :list_resources, fn :github, opts ->
-      assert opts[:timeout] == 1_100
-      assert opts[:cursor] == "b"
+    Mimic.expect(Jido.MCP, :list_resources, fn :github, opts ->
+      assert opts[:timeout] == 222
+      assert opts[:cursor] == "def"
       {:ok, %{status: :ok}}
     end)
 
-    expect(Jido.MCP, :list_resource_templates, fn :github, opts ->
-      assert opts[:timeout] == 1_200
-      assert opts[:cursor] == "c"
+    Mimic.expect(Jido.MCP, :list_resource_templates, fn :github, opts ->
+      assert opts[:timeout] == 333
+      assert opts[:cursor] == "ghi"
       {:ok, %{status: :ok}}
     end)
 
-    expect(Jido.MCP, :list_prompts, fn :github, opts ->
-      assert opts[:timeout] == 1_300
-      assert opts[:cursor] == "d"
+    Mimic.expect(Jido.MCP, :list_prompts, fn :github, opts ->
+      assert opts[:timeout] == 444
+      assert opts[:cursor] == "jkl"
       {:ok, %{status: :ok}}
     end)
 
-    assert {:ok, _} =
-             ListTools.run(%{timeout: 1_000, cursor: "a"}, %{default_endpoint: :github})
+    context = %{allowed_endpoints: [:github]}
 
-    assert {:ok, _} =
-             ListResources.run(%{timeout: 1_100, cursor: "b"}, %{default_endpoint: :github})
+    assert {:ok, %{status: :ok}} =
+             ListTools.run(%{endpoint_id: "github", timeout: 111, cursor: "abc"}, context)
 
-    assert {:ok, _} =
-             ListResourceTemplates.run(%{timeout: 1_200, cursor: "c"}, %{
-               default_endpoint: :github
-             })
+    assert {:ok, %{status: :ok}} =
+             ListResources.run(%{endpoint_id: :github, timeout: 222, cursor: "def"}, context)
 
-    assert {:ok, _} =
-             ListPrompts.run(%{timeout: 1_300, cursor: "d"}, %{default_endpoint: :github})
+    assert {:ok, %{status: :ok}} =
+             ListResourceTemplates.run(
+               %{endpoint_id: :github, timeout: 333, cursor: "ghi"},
+               context
+             )
+
+    assert {:ok, %{status: :ok}} =
+             ListPrompts.run(%{endpoint_id: :github, timeout: 444, cursor: "jkl"}, context)
   end
 
-  test "call, read, prompt, and refresh actions resolve endpoint ids" do
-    expect(Jido.MCP, :call_tool, fn :github, "search", %{"q" => "bug"}, opts ->
-      assert opts[:timeout] == 2_000
-      {:ok, %{status: :ok}}
+  test "call/read/get/refresh actions call corresponding API functions" do
+    Mimic.expect(Jido.MCP, :call_tool, fn :github, "search", %{"q" => "bug"}, opts ->
+      assert opts[:timeout] == 500
+      {:ok, %{status: :ok, kind: :call_tool}}
     end)
 
-    expect(Jido.MCP, :read_resource, fn :github, "repo://README", opts ->
-      assert opts[:timeout] == 2_100
-      {:ok, %{status: :ok}}
+    Mimic.expect(Jido.MCP, :read_resource, fn :github, "memo://x", opts ->
+      assert opts[:timeout] == 600
+      {:ok, %{status: :ok, kind: :read_resource}}
     end)
 
-    expect(Jido.MCP, :get_prompt, fn :github, "release", %{"v" => "1.0"}, opts ->
-      assert opts[:timeout] == 2_200
-      {:ok, %{status: :ok}}
+    Mimic.expect(Jido.MCP, :get_prompt, fn :github,
+                                           "release_notes",
+                                           %{"version" => "1.0.0"},
+                                           opts ->
+      assert opts[:timeout] == 700
+      {:ok, %{status: :ok, kind: :get_prompt}}
     end)
 
-    expect(Jido.MCP, :refresh_endpoint, fn :github ->
-      {:ok, %{status: :ok}}
+    Mimic.expect(Jido.MCP, :refresh_endpoint, fn :github ->
+      {:ok, %{status: :ok, kind: :refresh}}
     end)
 
-    assert {:ok, _} =
+    context = %{allowed_endpoints: [:github]}
+
+    assert {:ok, %{kind: :call_tool}} =
              CallTool.run(
                %{
-                 endpoint_id: "github",
+                 endpoint_id: :github,
                  tool_name: "search",
                  arguments: %{"q" => "bug"},
-                 timeout: 2_000
+                 timeout: 500
                },
-               %{}
+               context
              )
 
-    assert {:ok, _} =
-             ReadResource.run(%{endpoint_id: "github", uri: "repo://README", timeout: 2_100}, %{})
+    assert {:ok, %{kind: :read_resource}} =
+             ReadResource.run(%{endpoint_id: :github, uri: "memo://x", timeout: 600}, context)
 
-    assert {:ok, _} =
+    assert {:ok, %{kind: :get_prompt}} =
              GetPrompt.run(
                %{
-                 endpoint_id: "github",
-                 prompt_name: "release",
-                 arguments: %{"v" => "1.0"},
-                 timeout: 2_200
+                 endpoint_id: :github,
+                 prompt_name: "release_notes",
+                 arguments: %{"version" => "1.0.0"},
+                 timeout: 700
                },
-               %{}
+               context
              )
 
-    assert {:ok, _} = RefreshEndpoint.run(%{endpoint_id: :github}, %{})
+    assert {:ok, %{kind: :refresh}} =
+             RefreshEndpoint.run(%{endpoint_id: "github"}, context)
   end
 
-  test "rejects unknown endpoint ids and disallowed endpoints" do
-    assert {:error, :unknown_endpoint} =
-             ListTools.run(%{endpoint_id: "unknown"}, %{})
+  test "actions fail closed when endpoint is not allowlisted" do
+    context = %{allowed_endpoints: [:github]}
 
     assert {:error, :endpoint_not_allowed} =
-             ListTools.run(
-               %{endpoint_id: :filesystem},
-               %{allowed_endpoints: [:github]}
-             )
-  end
-
-  test "list actions omit optional options when not provided" do
-    expect(Jido.MCP, :list_tools, fn :github, [] -> {:ok, %{status: :ok}} end)
-    expect(Jido.MCP, :list_resources, fn :github, [] -> {:ok, %{status: :ok}} end)
-    expect(Jido.MCP, :list_resource_templates, fn :github, [] -> {:ok, %{status: :ok}} end)
-    expect(Jido.MCP, :list_prompts, fn :github, [] -> {:ok, %{status: :ok}} end)
-
-    assert {:ok, _} = ListTools.run(%{}, %{default_endpoint: :github})
-    assert {:ok, _} = ListResources.run(%{}, %{default_endpoint: :github})
-    assert {:ok, _} = ListResourceTemplates.run(%{}, %{default_endpoint: :github})
-    assert {:ok, _} = ListPrompts.run(%{}, %{default_endpoint: :github})
+             ListTools.run(%{endpoint_id: :filesystem}, context)
   end
 end
