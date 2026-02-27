@@ -68,6 +68,9 @@ defmodule Jido.MCP.Plugins.MCP do
   defp normalize_default_endpoint(nil), do: {:ok, nil}
   defp normalize_default_endpoint(value), do: EndpointID.resolve(value)
 
+  # Fail closed: if not explicitly configured, endpoint access is denied.
+  defp normalize_allowed_endpoints(nil), do: {:ok, []}
+
   defp normalize_allowed_endpoints(values) when is_list(values) do
     endpoints = Config.endpoints()
 
@@ -79,11 +82,10 @@ defmodule Jido.MCP.Plugins.MCP do
       end
     end)
     |> case do
-      {:ok, normalized} -> {:ok, Enum.reverse(normalized)}
+      {:ok, normalized} -> {:ok, normalized |> Enum.reverse() |> Enum.uniq()}
       error -> error
     end
   end
 
-  defp normalize_allowed_endpoints(nil), do: {:ok, nil}
   defp normalize_allowed_endpoints(_), do: {:error, {:invalid_allowed_endpoints, :invalid_type}}
 end

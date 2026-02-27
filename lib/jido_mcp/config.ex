@@ -3,9 +3,10 @@ defmodule Jido.MCP.Config do
   Loads and validates application MCP endpoint configuration.
   """
 
-  alias Jido.MCP.Endpoint
+  alias Jido.MCP.{Endpoint, EndpointID}
 
   @type endpoints :: %{required(atom()) => Endpoint.t()}
+  @type endpoint_id_error :: :endpoint_required | :invalid_endpoint_id | :unknown_endpoint
 
   @spec endpoints() :: endpoints()
   def endpoints do
@@ -27,6 +28,11 @@ defmodule Jido.MCP.Config do
     endpoints()
     |> Map.keys()
     |> Enum.sort()
+  end
+
+  @spec resolve_endpoint_id(term(), endpoints()) :: {:ok, atom()} | {:error, endpoint_id_error()}
+  def resolve_endpoint_id(endpoint_id, endpoints \\ endpoints()) do
+    EndpointID.resolve(endpoint_id, endpoints)
   end
 
   @spec normalize_endpoints(map() | keyword()) :: endpoints()
