@@ -10,7 +10,8 @@ defmodule Jido.MCP.ActionsTest do
     ListResources,
     ListTools,
     ReadResource,
-    RefreshEndpoint
+    RefreshEndpoint,
+    SetDefaultEndpoint
   }
 
   alias Jido.MCP.{ClientPool, Config}
@@ -165,6 +166,20 @@ defmodule Jido.MCP.ActionsTest do
 
     assert {:ok, %{endpoint: :runtime}} =
              ListTools.run(%{endpoint_id: "runtime"}, %{allowed_endpoints: [:runtime]})
+  end
+
+  test "set default endpoint validates allowlist and supports clearing" do
+    assert {:ok, %{mcp: %{default_endpoint: :github}}} =
+             SetDefaultEndpoint.run(%{endpoint_id: "github"}, %{allowed_endpoints: [:github]})
+
+    assert {:error, :endpoint_not_allowed} =
+             SetDefaultEndpoint.run(%{endpoint_id: :filesystem}, %{allowed_endpoints: [:github]})
+
+    assert {:ok, %{mcp: %{default_endpoint: :filesystem}}} =
+             SetDefaultEndpoint.run(%{endpoint_id: :filesystem}, %{allowed_endpoints: :all})
+
+    assert {:ok, %{mcp: %{default_endpoint: nil}}} =
+             SetDefaultEndpoint.run(%{}, %{allowed_endpoints: :all})
   end
 
   defp load_pool_from_config do

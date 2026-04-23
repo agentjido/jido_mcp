@@ -70,6 +70,23 @@ Runtime endpoints can be registered after application start:
 Runtime registration is process-local, rejects duplicate endpoint ids, and starts the MCP client
 only when the endpoint is first used.
 
+## Runtime Endpoint Lifecycle
+
+```elixir
+{:ok, endpoint} =
+  Jido.MCP.Endpoint.new(:runtime_demo, %{
+    transport: {:streamable_http, [base_url: "http://localhost:8080/mcp"]},
+    client_info: %{name: "my_app"}
+  })
+
+{:ok, ^endpoint} = Jido.MCP.register_endpoint(endpoint)
+{:ok, tools} = Jido.MCP.list_tools(:runtime_demo)
+
+{:ok, _removed} = Jido.MCP.unregister_endpoint(:runtime_demo)
+```
+
+For config changes at runtime, unregister then register the updated endpoint.
+
 ## Consume MCP APIs
 
 ```elixir
@@ -100,6 +117,7 @@ All calls return normalized envelopes:
 - `Jido.MCP.Actions.ListPrompts`
 - `Jido.MCP.Actions.GetPrompt`
 - `Jido.MCP.Actions.RefreshEndpoint`
+- `Jido.MCP.Actions.SetDefaultEndpoint`
 
 ### Plugin
 
@@ -109,13 +127,17 @@ defmodule MyApp.Agent do
     name: "assistant",
     plugins: [
       {Jido.MCP.Plugins.MCP,
-       %{
-         default_endpoint: :github,
-         allowed_endpoints: [:github, :local_fs]
-       }}
+        %{
+          default_endpoint: :github,
+          allowed_endpoints: [:github, :local_fs]
+          # or allowed_endpoints: :all
+        }}
     ]
 end
 ```
+
+`allowed_endpoints` defaults to `[]` (deny-all) when omitted.
+Set it to `:all` to allow all currently configured/runtime-registered endpoints.
 
 Signal routes:
 
@@ -127,6 +149,10 @@ Signal routes:
 - `mcp.prompts.list`
 - `mcp.prompts.get`
 - `mcp.endpoint.refresh`
+- `mcp.endpoint.default.set`
+
+To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set` with
+`%{endpoint_id: "github"}` (or `nil`/omitted to clear).
 
 ## Jido.AI Sync
 

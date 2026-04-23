@@ -15,6 +15,11 @@ defmodule Jido.MCP do
     ClientPool.register_endpoint(endpoint)
   end
 
+  @spec unregister_endpoint(endpoint_id()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
+  def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
+    ClientPool.unregister_endpoint(endpoint_id)
+  end
+
   @spec list_tools(endpoint_id(), keyword()) :: result()
   def list_tools(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "tools/list", opts, fn client, call_opts ->

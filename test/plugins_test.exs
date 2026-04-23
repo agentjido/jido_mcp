@@ -61,6 +61,7 @@ defmodule Jido.MCP.PluginsTest do
 
     assert {"mcp.tools.list", Jido.MCP.Actions.ListTools} in routes
     assert {"mcp.prompts.get", Jido.MCP.Actions.GetPrompt} in routes
+    assert {"mcp.endpoint.default.set", Jido.MCP.Actions.SetDefaultEndpoint} in routes
 
     assert {:ok, :continue} = MCP.handle_signal(%{}, %{})
     assert %{ok: true} == MCP.transform_result(nil, %{ok: true}, %{})

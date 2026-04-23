@@ -18,7 +18,7 @@ defmodule Jido.MCP.Actions.Helpers do
       ])
 
     with {:ok, endpoint_id} <- normalize_endpoint_id(endpoint_id),
-         :ok <- validate_allowed(endpoint_id, context) do
+         :ok <- validate_allowed_endpoint(endpoint_id, context) do
       {:ok, endpoint_id}
     end
   end
@@ -27,10 +27,12 @@ defmodule Jido.MCP.Actions.Helpers do
           {:ok, atom()} | {:error, :endpoint_required | :invalid_endpoint_id | :unknown_endpoint}
   def normalize_endpoint_id(id), do: ClientPool.resolve_endpoint_id(id)
 
-  defp validate_allowed(endpoint_id, context) do
+  @spec validate_allowed_endpoint(atom(), map()) :: :ok | {:error, term()}
+  def validate_allowed_endpoint(endpoint_id, context) do
     allowed =
       first_present([
         context[:allowed_endpoints],
+        context["allowed_endpoints"],
         get_in(context, [:plugin_state, :mcp, :allowed_endpoints]),
         get_in(context, [:state, :mcp, :allowed_endpoints]),
         get_in(context, [:agent, :state, :mcp, :allowed_endpoints])
@@ -38,6 +40,9 @@ defmodule Jido.MCP.Actions.Helpers do
 
     case normalize_allowed_endpoints(allowed) do
       nil ->
+        :ok
+
+      {:ok, :all} ->
         :ok
 
       {:ok, list} ->
@@ -49,6 +54,7 @@ defmodule Jido.MCP.Actions.Helpers do
   end
 
   defp normalize_allowed_endpoints(nil), do: nil
+  defp normalize_allowed_endpoints(:all), do: {:ok, :all}
 
   defp normalize_allowed_endpoints(values) when is_list(values) do
     endpoints = ClientPool.endpoints()
