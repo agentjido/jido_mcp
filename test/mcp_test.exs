@@ -183,6 +183,10 @@ defmodule Jido.MCPTest do
         client_info: %{name: "test"}
       })
 
+    expect(Jido.MCP.ClientPool, :fetch_endpoint, fn :github ->
+      {:ok, endpoint}
+    end)
+
     expect(Jido.MCP.ClientPool, :unregister_endpoint, fn :github ->
       {:ok, endpoint}
     end)

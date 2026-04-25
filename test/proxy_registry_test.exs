@@ -54,4 +54,18 @@ defmodule Jido.MCP.JidoAI.ProxyRegistryTest do
     assert ProxyRegistry.module_in_use?(ToolA)
     refute ProxyRegistry.module_in_use?(ToolB)
   end
+
+  test "tracks opted-in agents with sync options" do
+    ProxyRegistry.opt_in(:agent_one, %{prefix: "runtime_"})
+    ProxyRegistry.opt_in(:agent_two, %{})
+
+    opted_in = ProxyRegistry.opted_in_agents()
+
+    assert %{agent_server: :agent_one, options: %{prefix: "runtime_"}} in opted_in
+    assert %{agent_server: :agent_two, options: %{}} in opted_in
+
+    ProxyRegistry.opt_out(:agent_two)
+
+    refute %{agent_server: :agent_two, options: %{}} in ProxyRegistry.opted_in_agents()
+  end
 end

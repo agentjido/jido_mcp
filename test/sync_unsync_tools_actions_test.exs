@@ -170,6 +170,86 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result_b.purged_count == 1
   end
 
+  test "runtime endpoint registration syncs tools to all opted-in agents" do
+    runtime_tool = %{
+      "name" => "search_issues",
+      "description" => "Search issues",
+      "inputSchema" => %{
+        "type" => "object",
+        "required" => ["query"],
+        "properties" => %{"query" => %{"type" => "string"}}
+      }
+    }
+
+    Mimic.stub(Elixir.Jido.MCP, :list_tools, fn endpoint_id ->
+      case endpoint_id do
+        :github -> {:ok, %{data: %{"tools" => []}}}
+        :runtime -> {:ok, %{data: %{"tools" => [runtime_tool]}}}
+      end
+    end)
+
+    assert {:ok, _} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: :github, agent_server: :agent_a, replace_existing: true},
+               %{}
+             )
+
+    assert {:ok, _} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: :github, agent_server: :agent_b, replace_existing: true},
+               %{}
+             )
+
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = Jido.MCP.register_endpoint(endpoint)
+
+    assert length(ProxyRegistry.get(:agent_a, :runtime)) == 1
+    assert length(ProxyRegistry.get(:agent_b, :runtime)) == 1
+  end
+
+  test "runtime endpoint unregistration unsyncs tools from opted-in agents" do
+    runtime_tool = %{
+      "name" => "search_issues",
+      "description" => "Search issues",
+      "inputSchema" => %{
+        "type" => "object",
+        "required" => ["query"],
+        "properties" => %{"query" => %{"type" => "string"}}
+      }
+    }
+
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+
+    Mimic.stub(Elixir.Jido.MCP, :list_tools, fn endpoint_id ->
+      case endpoint_id do
+        :github -> {:ok, %{data: %{"tools" => []}}}
+        :runtime -> {:ok, %{data: %{"tools" => [runtime_tool]}}}
+      end
+    end)
+
+    assert {:ok, _} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: :runtime, agent_server: :agent_a, replace_existing: true},
+               %{}
+             )
+
+    assert length(ProxyRegistry.get(:agent_a, :runtime)) == 1
+
+    assert {:ok, %Jido.MCP.Endpoint{id: :runtime}} = Jido.MCP.unregister_endpoint(:runtime)
+    assert ProxyRegistry.get(:agent_a, :runtime) == []
+  end
+
   defp load_pool_from_config do
     :sys.replace_state(ClientPool, fn state ->
       %{state | endpoints: Config.endpoints(), refs: %{}}

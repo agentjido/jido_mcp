@@ -12,12 +12,22 @@ defmodule Jido.MCP do
           {:ok, Endpoint.t()}
           | {:error, {:endpoint_already_registered, atom()} | {:invalid_endpoint, term()}}
   def register_endpoint(endpoint) do
-    ClientPool.register_endpoint(endpoint)
+    with {:ok, registered_endpoint} <- ClientPool.register_endpoint(endpoint) do
+      _ = Jido.MCP.JidoAI.RuntimeSync.on_endpoint_registered(registered_endpoint.id)
+      {:ok, registered_endpoint}
+    end
   end
 
   @spec unregister_endpoint(endpoint_id()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
   def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
-    ClientPool.unregister_endpoint(endpoint_id)
+    case ClientPool.fetch_endpoint(endpoint_id) do
+      {:ok, _endpoint} ->
+        _ = Jido.MCP.JidoAI.RuntimeSync.before_endpoint_unregistered(endpoint_id)
+        ClientPool.unregister_endpoint(endpoint_id)
+
+      {:error, :unknown_endpoint} = error ->
+        error
+    end
   end
 
   @spec list_tools(endpoint_id(), keyword()) :: result()
