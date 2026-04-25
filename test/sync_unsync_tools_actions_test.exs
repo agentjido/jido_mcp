@@ -24,7 +24,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     })
 
     load_pool_from_config()
-    Agent.update(ProxyRegistry, fn _ -> %{} end)
+    Agent.update(ProxyRegistry, fn _ -> %{entries: %{}, subscriptions: %{}} end)
 
     on_exit(fn ->
       if is_nil(previous) do
@@ -93,6 +93,39 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
 
     assert result.endpoint_id == :runtime
     assert result.discovered_count == 0
+    assert result.list_tools_attempts == 1
+    refute result.list_tools_retried?
+  end
+
+  test "sync retries transient server capability initialization errors" do
+    runtime_tool = %{
+      "name" => "search_issues",
+      "description" => "Search issues",
+      "inputSchema" => %{
+        "type" => "object",
+        "required" => ["query"],
+        "properties" => %{"query" => %{"type" => "string"}}
+      }
+    }
+
+    {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+    Mimic.stub(Elixir.Jido.MCP, :list_tools, fn :github ->
+      current = Agent.get_and_update(attempts, fn value -> {value + 1, value + 1} end)
+
+      if current < 3 do
+        {:error, %{status: :error, message: "Server capabilities not set"}}
+      else
+        {:ok, %{data: %{"tools" => [runtime_tool]}}}
+      end
+    end)
+
+    assert {:ok, result} =
+             SyncToolsToAgent.run(%{endpoint_id: :github, agent_server: :agent_a}, %{})
+
+    assert result.list_tools_attempts == 3
+    assert result.list_tools_retried?
+    assert result.registered_count == 1
   end
 
   test "unsync resolves runtime-registered endpoint ids" do
@@ -170,7 +203,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result_b.purged_count == 1
   end
 
-  test "runtime endpoint registration syncs tools to all opted-in agents" do
+  test "runtime endpoint registration syncs tools only for endpoint subscribers" do
     runtime_tool = %{
       "name" => "search_issues",
       "description" => "Search issues",
@@ -181,24 +214,19 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
       }
     }
 
+    calls = Agent.start_link(fn -> [] end) |> elem(1)
+
     Mimic.stub(Elixir.Jido.MCP, :list_tools, fn endpoint_id ->
+      Agent.update(calls, fn acc -> [endpoint_id | acc] end)
+
       case endpoint_id do
         :github -> {:ok, %{data: %{"tools" => []}}}
         :runtime -> {:ok, %{data: %{"tools" => [runtime_tool]}}}
       end
     end)
 
-    assert {:ok, _} =
-             SyncToolsToAgent.run(
-               %{endpoint_id: :github, agent_server: :agent_a, replace_existing: true},
-               %{}
-             )
-
-    assert {:ok, _} =
-             SyncToolsToAgent.run(
-               %{endpoint_id: :github, agent_server: :agent_b, replace_existing: true},
-               %{}
-             )
+    ProxyRegistry.subscribe(:agent_a, :runtime, %{})
+    ProxyRegistry.subscribe(:agent_b, :github, %{})
 
     {:ok, endpoint} =
       Jido.MCP.Endpoint.new(:runtime, %{
@@ -209,10 +237,12 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert {:ok, ^endpoint} = Jido.MCP.register_endpoint(endpoint)
 
     assert length(ProxyRegistry.get(:agent_a, :runtime)) == 1
-    assert length(ProxyRegistry.get(:agent_b, :runtime)) == 1
+    assert ProxyRegistry.get(:agent_b, :runtime) == []
+
+    assert Agent.get(calls, & &1) |> Enum.count(&(&1 == :runtime)) == 1
   end
 
-  test "runtime endpoint unregistration unsyncs tools from opted-in agents" do
+  test "runtime endpoint unregistration unsyncs only subscribed agents" do
     runtime_tool = %{
       "name" => "search_issues",
       "description" => "Search issues",
@@ -244,10 +274,13 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
                %{}
              )
 
+    ProxyRegistry.subscribe(:agent_b, :github, %{})
+
     assert length(ProxyRegistry.get(:agent_a, :runtime)) == 1
 
     assert {:ok, %Jido.MCP.Endpoint{id: :runtime}} = Jido.MCP.unregister_endpoint(:runtime)
     assert ProxyRegistry.get(:agent_a, :runtime) == []
+    assert ProxyRegistry.get(:agent_b, :runtime) == []
   end
 
   defp load_pool_from_config do

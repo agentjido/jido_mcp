@@ -31,6 +31,7 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
         end)
 
       deleted_modules = ProxyRegistry.delete(params[:agent_server], endpoint_id)
+      ProxyRegistry.unsubscribe(params[:agent_server], endpoint_id)
       {purged, retained, purge_failed} = cleanup_deleted_modules(deleted_modules)
 
       {:ok,

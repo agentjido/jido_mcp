@@ -12,7 +12,9 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - MCP plugin allowlists now support `allowed_endpoints: :all`.
-- Runtime endpoint register/unregister now propagates MCP tool sync updates to all opted-in Jido.AI agents.
+- Runtime endpoint register/refresh/unregister now propagate MCP tool sync updates to endpoint-subscribed Jido.AI agents.
+- Added explicit assignment APIs: `Jido.MCP.sync_endpoint_to_agent/3` and `Jido.MCP.unsync_endpoint_from_agent/2`.
+- MCP tool discovery sync now retries transient "Server capabilities not set" initialization failures before failing.
 
 ## [0.1.1] - 2026-02-25
 

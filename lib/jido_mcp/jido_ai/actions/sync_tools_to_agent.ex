@@ -26,12 +26,14 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
   @max_tools 200
   @max_schema_depth 8
   @max_schema_properties 200
+  @max_discovery_attempts 3
+  @retry_base_ms 100
 
   @impl true
   def run(params, _context) do
     with :ok <- ensure_jido_ai_loaded(),
          {:ok, endpoint_id} <- ClientPool.resolve_endpoint_id(params[:endpoint_id]),
-         {:ok, response} <- Jido.MCP.list_tools(endpoint_id),
+         {:ok, response, retry} <- list_tools_with_retry(endpoint_id),
          tools when is_list(tools) <- get_in(response, [:data, "tools"]) || [],
          :ok <- ensure_tool_limit(tools),
          {:ok, modules, warnings, skipped} <-
@@ -49,7 +51,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
       failed = skipped_failures ++ failed
 
       ProxyRegistry.put(params[:agent_server], endpoint_id, registered)
-      ProxyRegistry.opt_in(params[:agent_server], %{prefix: params[:prefix]})
+      ProxyRegistry.subscribe(params[:agent_server], endpoint_id, %{prefix: params[:prefix]})
 
       {:ok,
        %{
@@ -60,9 +62,47 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
          failed: failed,
          warnings: warnings,
          skipped_count: length(skipped),
-         registered_tools: Enum.map(registered, & &1.name())
+         registered_tools: Enum.map(registered, & &1.name()),
+         list_tools_attempts: retry.attempts,
+         list_tools_retried?: retry.retried?
        }}
     end
+  end
+
+  defp list_tools_with_retry(endpoint_id) when is_atom(endpoint_id) do
+    do_list_tools_with_retry(endpoint_id, 1)
+  end
+
+  defp do_list_tools_with_retry(endpoint_id, attempt) do
+    case Jido.MCP.list_tools(endpoint_id) do
+      {:ok, response} ->
+        {:ok, response, %{attempts: attempt, retried?: attempt > 1}}
+
+      {:error, reason} ->
+        if transient_capability_error?(reason) and attempt < @max_discovery_attempts do
+          Process.sleep(backoff_ms(attempt))
+          do_list_tools_with_retry(endpoint_id, attempt + 1)
+        else
+          {:error, reason}
+        end
+    end
+  end
+
+  defp backoff_ms(attempt), do: @retry_base_ms * trunc(:math.pow(2, attempt - 1))
+
+  defp transient_capability_error?(%{message: message}) when is_binary(message) do
+    String.contains?(String.downcase(message), "server capabilities not set")
+  end
+
+  defp transient_capability_error?(%{"message" => message}) when is_binary(message) do
+    String.contains?(String.downcase(message), "server capabilities not set")
+  end
+
+  defp transient_capability_error?(reason) do
+    reason
+    |> inspect()
+    |> String.downcase()
+    |> String.contains?("server capabilities not set")
   end
 
   defp ensure_jido_ai_loaded do

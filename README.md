@@ -160,9 +160,17 @@ To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set
 
 `Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent` removes previously synced proxies.
 
-After an agent syncs at least once (is opted-in), runtime endpoint registration and
-unregistration via `Jido.MCP.register_endpoint/1` and `Jido.MCP.unregister_endpoint/1`
-automatically sync/unsync MCP tools for all opted-in agents.
+Runtime endpoint registration/refresh/unregistration now trigger runtime sync hooks for
+agents subscribed to that specific endpoint.
+
+Use explicit assignment APIs:
+
+```elixir
+Jido.MCP.sync_endpoint_to_agent(:github, :my_agent, prefix: "mcp_")
+Jido.MCP.unsync_endpoint_from_agent(:github, :my_agent)
+```
+
+These return structured sync status maps with `:ok`, `:warning`, or `:error`.
 
 Plugin route support:
 

@@ -85,8 +85,21 @@ defmodule Jido.MCP do
   def refresh_endpoint(endpoint_id) when is_atom(endpoint_id) do
     with {:ok, _endpoint, _ref} <- ClientPool.refresh(endpoint_id),
          {:ok, _} = listed <- list_tools(endpoint_id) do
+      _ = Jido.MCP.JidoAI.RuntimeSync.on_endpoint_refreshed(endpoint_id)
       listed
     end
+  end
+
+  @spec sync_endpoint_to_agent(term(), term(), keyword() | map()) :: map()
+  def sync_endpoint_to_agent(endpoint_id, agent_server, opts \\ %{})
+      when is_list(opts) or is_map(opts) do
+    options = if is_list(opts), do: Enum.into(opts, %{}), else: opts
+    Jido.MCP.JidoAI.RuntimeSync.sync_endpoint_to_agent(endpoint_id, agent_server, options)
+  end
+
+  @spec unsync_endpoint_from_agent(term(), term()) :: map()
+  def unsync_endpoint_from_agent(endpoint_id, agent_server) do
+    Jido.MCP.JidoAI.RuntimeSync.unsync_endpoint_from_agent(endpoint_id, agent_server)
   end
 
   @spec endpoint_status(endpoint_id()) :: {:ok, map()} | {:error, term()}

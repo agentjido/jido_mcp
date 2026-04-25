@@ -135,6 +135,18 @@ defmodule Jido.MCPTest do
       {:ok, raw}
     end)
 
+    expect(Jido.MCP.JidoAI.RuntimeSync, :on_endpoint_refreshed, fn :github ->
+      %{
+        status: :ok,
+        operation: :sync,
+        endpoint_id: :github,
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        results: []
+      }
+    end)
+
     assert {:ok, result} = MCP.refresh_endpoint(:github)
     assert result.method == "tools/list"
     assert result.data == %{"tools" => []}
@@ -157,6 +169,18 @@ defmodule Jido.MCPTest do
 
     expect(Jido.MCP.ClientPool, :register_endpoint, fn ^endpoint ->
       {:ok, endpoint}
+    end)
+
+    expect(Jido.MCP.JidoAI.RuntimeSync, :on_endpoint_registered, fn :runtime ->
+      %{
+        status: :ok,
+        operation: :sync,
+        endpoint_id: :runtime,
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        results: []
+      }
     end)
 
     assert {:ok, ^endpoint} = MCP.register_endpoint(endpoint)
@@ -191,7 +215,57 @@ defmodule Jido.MCPTest do
       {:ok, endpoint}
     end)
 
+    expect(Jido.MCP.JidoAI.RuntimeSync, :before_endpoint_unregistered, fn :github ->
+      %{
+        status: :ok,
+        operation: :unsync,
+        endpoint_id: :github,
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        results: []
+      }
+    end)
+
     assert {:ok, ^endpoint} = MCP.unregister_endpoint(:github)
+  end
+
+  test "sync_endpoint_to_agent returns structured status" do
+    status = %{
+      status: :ok,
+      operation: :sync,
+      endpoint_id: :github,
+      attempted: 1,
+      succeeded: 1,
+      failed: 0,
+      results: [%{agent_server: :agent_a, status: :ok, result: %{registered_count: 1}}]
+    }
+
+    expect(Jido.MCP.JidoAI.RuntimeSync, :sync_endpoint_to_agent, fn :github,
+                                                                    :agent_a,
+                                                                    %{prefix: "x_"} ->
+      status
+    end)
+
+    assert ^status = MCP.sync_endpoint_to_agent(:github, :agent_a, prefix: "x_")
+  end
+
+  test "unsync_endpoint_from_agent returns structured status" do
+    status = %{
+      status: :warning,
+      operation: :unsync,
+      endpoint_id: :github,
+      attempted: 1,
+      succeeded: 0,
+      failed: 1,
+      results: [%{agent_server: :agent_a, status: :error, reason: :unknown_endpoint}]
+    }
+
+    expect(Jido.MCP.JidoAI.RuntimeSync, :unsync_endpoint_from_agent, fn :github, :agent_a ->
+      status
+    end)
+
+    assert ^status = MCP.unsync_endpoint_from_agent(:github, :agent_a)
   end
 
   test "returns client pool errors" do

@@ -22,7 +22,7 @@ defmodule Jido.MCP.JidoAI.ProxyRegistryTest do
   end
 
   setup do
-    Agent.update(ProxyRegistry, fn _ -> %{} end)
+    Agent.update(ProxyRegistry, fn _ -> %{entries: %{}, subscriptions: %{}} end)
     :ok
   end
 
@@ -55,17 +55,19 @@ defmodule Jido.MCP.JidoAI.ProxyRegistryTest do
     refute ProxyRegistry.module_in_use?(ToolB)
   end
 
-  test "tracks opted-in agents with sync options" do
-    ProxyRegistry.opt_in(:agent_one, %{prefix: "runtime_"})
-    ProxyRegistry.opt_in(:agent_two, %{})
+  test "tracks endpoint subscribers with options" do
+    ProxyRegistry.subscribe(:agent_one, :github, %{prefix: "runtime_"})
+    ProxyRegistry.subscribe(:agent_two, :github, %{})
+    ProxyRegistry.subscribe(:agent_two, :filesystem, %{})
 
-    opted_in = ProxyRegistry.opted_in_agents()
+    github_subscribers = ProxyRegistry.subscribers_for(:github)
 
-    assert %{agent_server: :agent_one, options: %{prefix: "runtime_"}} in opted_in
-    assert %{agent_server: :agent_two, options: %{}} in opted_in
+    assert %{agent_server: :agent_one, options: %{prefix: "runtime_"}} in github_subscribers
+    assert %{agent_server: :agent_two, options: %{}} in github_subscribers
 
-    ProxyRegistry.opt_out(:agent_two)
+    ProxyRegistry.unsubscribe(:agent_two, :github)
 
-    refute %{agent_server: :agent_two, options: %{}} in ProxyRegistry.opted_in_agents()
+    refute %{agent_server: :agent_two, options: %{}} in ProxyRegistry.subscribers_for(:github)
+    assert %{agent_server: :agent_two, options: %{}} in ProxyRegistry.subscribers_for(:filesystem)
   end
 end
