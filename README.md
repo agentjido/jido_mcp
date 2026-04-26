@@ -116,7 +116,9 @@ All calls return normalized envelopes:
 - `Jido.MCP.Actions.ReadResource`
 - `Jido.MCP.Actions.ListPrompts`
 - `Jido.MCP.Actions.GetPrompt`
+- `Jido.MCP.Actions.RegisterEndpoint`
 - `Jido.MCP.Actions.RefreshEndpoint`
+- `Jido.MCP.Actions.UnregisterEndpoint`
 - `Jido.MCP.Actions.SetDefaultEndpoint`
 
 ### Plugin
@@ -148,7 +150,9 @@ Signal routes:
 - `mcp.resources.read`
 - `mcp.prompts.list`
 - `mcp.prompts.get`
+- `mcp.endpoint.register`
 - `mcp.endpoint.refresh`
+- `mcp.endpoint.unregister`
 - `mcp.endpoint.default.set`
 
 To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set` with
@@ -160,22 +164,57 @@ To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set
 
 `Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent` removes previously synced proxies.
 
-Runtime endpoint registration/refresh/unregistration now trigger runtime sync hooks for
-agents subscribed to that specific endpoint.
-
-Use explicit assignment APIs:
-
-```elixir
-Jido.MCP.sync_endpoint_to_agent(:github, :my_agent, prefix: "mcp_")
-Jido.MCP.unsync_endpoint_from_agent(:github, :my_agent)
-```
-
-These return structured sync status maps with `:ok`, `:warning`, or `:error`.
+Tool sync uses deterministic MCP readiness through `ClientPool.ensure_client/1`,
+which now waits on `Anubis.Client.await_ready/2` before endpoint calls execute.
 
 Plugin route support:
 
 - `mcp.ai.sync_tools`
 - `mcp.ai.unsync_tools`
+
+### Host Runtime Orchestration (Signals)
+
+Host projects are expected to orchestrate runtime endpoint lifecycle and tool sync
+explicitly using plugin signals.
+
+Recommended signal sequences:
+
+- Register endpoint then sync tools
+  1. `mcp.endpoint.register`
+  2. `mcp.ai.sync_tools`
+- Refresh endpoint then resync tools
+  1. `mcp.endpoint.refresh`
+  2. `mcp.ai.sync_tools` (with `replace_existing: true`)
+- Unsync tools before unregistering endpoint
+  1. `mcp.ai.unsync_tools`
+  2. `mcp.endpoint.unregister`
+
+Example signal payloads:
+
+```elixir
+# mcp.endpoint.register
+%{
+  endpoint_id: "runtime_demo",
+  endpoint: %{
+    transport: {:streamable_http, [base_url: "http://localhost:8080/mcp"]},
+    client_info: %{name: "my_app"}
+  }
+}
+
+# mcp.ai.sync_tools
+%{
+  endpoint_id: "runtime_demo",
+  agent_server: :my_ai_agent,
+  replace_existing: true,
+  prefix: "mcp_"
+}
+
+# mcp.ai.unsync_tools
+%{endpoint_id: "runtime_demo", agent_server: :my_ai_agent}
+
+# mcp.endpoint.unregister
+%{endpoint_id: "runtime_demo"}
+```
 
 ## Expose Jido As MCP Server
 

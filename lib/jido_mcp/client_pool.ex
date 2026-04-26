@@ -123,8 +123,18 @@ defmodule Jido.MCP.ClientPool do
     case fetch_endpoint(state, endpoint_id) do
       {:ok, endpoint} ->
         case ensure_started(endpoint_id, endpoint, state) do
-          {:ok, ref, state} -> {:reply, {:ok, endpoint, ref}, state}
-          {:error, reason, state} -> {:reply, {:error, reason}, state}
+          {:ok, ref, state} ->
+            case await_ready(ref, endpoint) do
+              :ok ->
+                {:reply, {:ok, endpoint, ref}, state}
+
+              {:error, reason} ->
+                state = maybe_stop_endpoint(endpoint_id, state)
+                {:reply, {:error, {:endpoint_not_ready, reason}}, state}
+            end
+
+          {:error, reason, state} ->
+            {:reply, {:error, reason}, state}
         end
 
       {:error, reason} ->
@@ -201,6 +211,13 @@ defmodule Jido.MCP.ClientPool do
       :error ->
         start_endpoint(endpoint_id, endpoint, state)
     end
+  end
+
+  defp await_ready(ref, endpoint) do
+    timeout = endpoint.timeouts.request_ms
+    Anubis.Client.await_ready(ref.client, timeout: timeout)
+  catch
+    :exit, reason -> {:error, reason}
   end
 
   defp start_endpoint(endpoint_id, endpoint, state) do

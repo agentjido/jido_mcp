@@ -12,22 +12,12 @@ defmodule Jido.MCP do
           {:ok, Endpoint.t()}
           | {:error, {:endpoint_already_registered, atom()} | {:invalid_endpoint, term()}}
   def register_endpoint(endpoint) do
-    with {:ok, registered_endpoint} <- ClientPool.register_endpoint(endpoint) do
-      _ = Jido.MCP.JidoAI.RuntimeSync.on_endpoint_registered(registered_endpoint.id)
-      {:ok, registered_endpoint}
-    end
+    ClientPool.register_endpoint(endpoint)
   end
 
   @spec unregister_endpoint(endpoint_id()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
   def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
-    case ClientPool.fetch_endpoint(endpoint_id) do
-      {:ok, _endpoint} ->
-        _ = Jido.MCP.JidoAI.RuntimeSync.before_endpoint_unregistered(endpoint_id)
-        ClientPool.unregister_endpoint(endpoint_id)
-
-      {:error, :unknown_endpoint} = error ->
-        error
-    end
+    ClientPool.unregister_endpoint(endpoint_id)
   end
 
   @spec list_tools(endpoint_id(), keyword()) :: result()
@@ -81,25 +71,26 @@ defmodule Jido.MCP do
     end)
   end
 
-  @spec refresh_endpoint(endpoint_id()) :: result()
+  @spec refresh_endpoint(endpoint_id()) ::
+          {:ok, Endpoint.t(), ClientPool.client_ref()} | {:error, term()}
   def refresh_endpoint(endpoint_id) when is_atom(endpoint_id) do
-    with {:ok, _endpoint, _ref} <- ClientPool.refresh(endpoint_id),
-         {:ok, _} = listed <- list_tools(endpoint_id) do
-      _ = Jido.MCP.JidoAI.RuntimeSync.on_endpoint_refreshed(endpoint_id)
-      listed
+    ClientPool.refresh(endpoint_id)
+  end
+
+  @doc """
+  Ensures an endpoint client is started and MCP initialization is complete.
+
+  This is intended for flows that must guarantee server readiness before
+  subsequent operations (for example runtime tool synchronization).
+  """
+  @spec await_endpoint_ready(endpoint_id(), keyword()) :: :ok | {:error, term()}
+  def await_endpoint_ready(endpoint_id, opts \\ []) when is_atom(endpoint_id) and is_list(opts) do
+    _opts = opts
+
+    case ClientPool.ensure_client(endpoint_id) do
+      {:ok, _endpoint, _ref} -> :ok
+      {:error, reason} -> {:error, reason}
     end
-  end
-
-  @spec sync_endpoint_to_agent(term(), term(), keyword() | map()) :: map()
-  def sync_endpoint_to_agent(endpoint_id, agent_server, opts \\ %{})
-      when is_list(opts) or is_map(opts) do
-    options = if is_list(opts), do: Enum.into(opts, %{}), else: opts
-    Jido.MCP.JidoAI.RuntimeSync.sync_endpoint_to_agent(endpoint_id, agent_server, options)
-  end
-
-  @spec unsync_endpoint_from_agent(term(), term()) :: map()
-  def unsync_endpoint_from_agent(endpoint_id, agent_server) do
-    Jido.MCP.JidoAI.RuntimeSync.unsync_endpoint_from_agent(endpoint_id, agent_server)
   end
 
   @spec endpoint_status(endpoint_id()) :: {:ok, map()} | {:error, term()}
@@ -108,7 +99,7 @@ defmodule Jido.MCP do
   end
 
   defp execute(endpoint_id, method, opts, fun) do
-    with {:ok, endpoint, ref} <- ClientPool.ensure_client(endpoint_id) do
+    with {:ok, endpoint, ref} <- ClientPool.ensure_client(endpoint_id) |> dbg() do
       timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms)
       call_opts = Keyword.put_new(opts, :timeout, timeout)
       response = fun.(ref.client, call_opts)

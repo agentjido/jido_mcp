@@ -6,7 +6,9 @@ require Jido.MCP.Actions.ReadResource
 require Jido.MCP.Actions.ListPrompts
 require Jido.MCP.Actions.GetPrompt
 require Jido.MCP.Actions.RefreshEndpoint
+require Jido.MCP.Actions.RegisterEndpoint
 require Jido.MCP.Actions.SetDefaultEndpoint
+require Jido.MCP.Actions.UnregisterEndpoint
 
 defmodule Jido.MCP.Plugins.MCP do
   @moduledoc """
@@ -27,6 +29,8 @@ defmodule Jido.MCP.Plugins.MCP do
       Jido.MCP.Actions.ListPrompts,
       Jido.MCP.Actions.GetPrompt,
       Jido.MCP.Actions.RefreshEndpoint,
+      Jido.MCP.Actions.RegisterEndpoint,
+      Jido.MCP.Actions.UnregisterEndpoint,
       Jido.MCP.Actions.SetDefaultEndpoint
     ],
     description: "Model Context Protocol integration",
@@ -59,7 +63,9 @@ defmodule Jido.MCP.Plugins.MCP do
       {"mcp.resources.read", Jido.MCP.Actions.ReadResource},
       {"mcp.prompts.list", Jido.MCP.Actions.ListPrompts},
       {"mcp.prompts.get", Jido.MCP.Actions.GetPrompt},
+      {"mcp.endpoint.register", Jido.MCP.Actions.RegisterEndpoint},
       {"mcp.endpoint.refresh", Jido.MCP.Actions.RefreshEndpoint},
+      {"mcp.endpoint.unregister", Jido.MCP.Actions.UnregisterEndpoint},
       {"mcp.endpoint.default.set", Jido.MCP.Actions.SetDefaultEndpoint}
     ]
   end

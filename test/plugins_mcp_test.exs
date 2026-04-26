@@ -79,6 +79,8 @@ defmodule Jido.MCP.Plugins.MCPTest do
 
   test "plugin routes include runtime default endpoint setter" do
     routes = MCP.signal_routes(%{})
+    assert {"mcp.endpoint.register", Jido.MCP.Actions.RegisterEndpoint} in routes
+    assert {"mcp.endpoint.unregister", Jido.MCP.Actions.UnregisterEndpoint} in routes
     assert {"mcp.endpoint.default.set", Jido.MCP.Actions.SetDefaultEndpoint} in routes
   end
 
