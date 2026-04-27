@@ -3,6 +3,30 @@ defmodule Jido.MCP.ClientPoolTest do
 
   alias Jido.MCP.{ClientPool, Endpoint}
 
+  defmodule ReadyClient do
+    use GenServer
+
+    def start_link(capabilities) do
+      GenServer.start_link(__MODULE__, capabilities)
+    end
+
+    @impl true
+    def init(capabilities), do: {:ok, capabilities}
+
+    @impl true
+    def handle_call(:get_server_capabilities, _from, [nil | rest]) do
+      {:reply, nil, rest}
+    end
+
+    def handle_call(:get_server_capabilities, _from, [capabilities | rest]) do
+      {:reply, capabilities, rest}
+    end
+
+    def handle_call(:get_server_capabilities, _from, capabilities) do
+      {:reply, capabilities, capabilities}
+    end
+  end
+
   setup do
     {:ok, endpoint} =
       Endpoint.new(:github, %{
@@ -42,5 +66,17 @@ defmodule Jido.MCP.ClientPoolTest do
     refute status.client_alive?
     refute status.supervisor_alive?
     refute status.transport_alive?
+  end
+
+  test "await_ready waits until server capabilities are available" do
+    client = start_supervised!({ReadyClient, [nil, %{"tools" => %{}}]})
+
+    assert :ok = ClientPool.await_ready(%{client: client}, 250)
+  end
+
+  test "await_ready returns client_not_ready when capabilities never arrive" do
+    client = start_supervised!({ReadyClient, nil})
+
+    assert {:error, :client_not_ready} = ClientPool.await_ready(%{client: client}, 30)
   end
 end

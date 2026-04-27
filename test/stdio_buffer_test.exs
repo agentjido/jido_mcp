@@ -1,0 +1,57 @@
+defmodule Jido.MCP.Transport.STDIOBufferTest do
+  use ExUnit.Case, async: true
+
+  alias Jido.MCP.Transport.STDIOBuffer
+
+  test "buffers partial JSON-RPC lines until newline arrives" do
+    response = ~s({"jsonrpc":"2.0","id":"1","result":{"ok":true}})
+
+    assert {[], buffer} = STDIOBuffer.push("", String.slice(response, 0, 20))
+    assert {messages, ""} = STDIOBuffer.push(buffer, String.slice(response, 20..-1//1) <> "\n")
+
+    assert [%{"id" => "1", "result" => %{"ok" => true}}] = Enum.map(messages, &Jason.decode!/1)
+  end
+
+  test "splits multiple complete messages into separate client casts" do
+    data =
+      [
+        ~s({"jsonrpc":"2.0","id":"1","result":{"a":1}}),
+        ~s({"jsonrpc":"2.0","id":"2","result":{"b":2}})
+      ]
+      |> Enum.join("\n")
+      |> Kernel.<>("\n")
+
+    assert {messages, ""} = STDIOBuffer.push("", data)
+
+    assert [
+             %{"id" => "1", "result" => %{"a" => 1}},
+             %{"id" => "2", "result" => %{"b" => 2}}
+           ] = Enum.map(messages, &Jason.decode!/1)
+  end
+
+  test "expands JSON-RPC batches into separate messages" do
+    batch =
+      Jason.encode!([
+        %{"jsonrpc" => "2.0", "id" => "1", "result" => %{"a" => 1}},
+        %{"jsonrpc" => "2.0", "id" => "2", "result" => %{"b" => 2}}
+      ])
+
+    assert {messages, ""} = STDIOBuffer.push("", batch <> "\n")
+
+    assert [
+             %{"id" => "1", "result" => %{"a" => 1}},
+             %{"id" => "2", "result" => %{"b" => 2}}
+           ] = Enum.map(messages, &Jason.decode!/1)
+  end
+
+  test "ignores non-json stdout noise" do
+    data = """
+    server started
+    {"jsonrpc":"2.0","id":"1","result":{"ok":true}}
+    not json
+    """
+
+    assert {messages, ""} = STDIOBuffer.push("", data)
+    assert [%{"id" => "1", "result" => %{"ok" => true}}] = Enum.map(messages, &Jason.decode!/1)
+  end
+end

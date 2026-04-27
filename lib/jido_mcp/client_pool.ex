@@ -9,6 +9,7 @@ defmodule Jido.MCP.ClientPool do
 
   @registry Jido.MCP.Registry
   @supervisor Jido.MCP.ClientSupervisor
+  @ready_poll_ms 25
 
   @type client_ref :: %{
           client: GenServer.name(),
@@ -24,6 +25,18 @@ defmodule Jido.MCP.ClientPool do
   @spec ensure_client(atom()) :: {:ok, Endpoint.t(), client_ref()} | {:error, term()}
   def ensure_client(endpoint_id) when is_atom(endpoint_id) do
     GenServer.call(__MODULE__, {:ensure_client, endpoint_id})
+  end
+
+  @spec await_ready(client_ref(), timeout()) :: :ok | {:error, term()}
+  def await_ready(%{client: client}, timeout \\ 5_000) do
+    case resolve_name(client) do
+      pid when is_pid(pid) ->
+        deadline = System.monotonic_time(:millisecond) + timeout
+        do_await_ready(client, deadline)
+
+      _ ->
+        :ok
+    end
   end
 
   @spec endpoint_status(atom()) :: {:ok, map()} | {:error, term()}
@@ -110,27 +123,7 @@ defmodule Jido.MCP.ClientPool do
 
   defp start_endpoint(endpoint_id, endpoint, state) do
     ref = names_for(endpoint_id)
-
-    child_spec = %{
-      id: {:mcp_client, endpoint_id},
-      start:
-        {Anubis.Client.Supervisor, :start_link,
-         [
-           Jido.MCP.AnubisClient,
-           [
-             name: ref.supervisor,
-             client_name: ref.client,
-             transport_name: ref.transport,
-             transport: endpoint.transport,
-             client_info: endpoint.client_info,
-             capabilities: endpoint.capabilities,
-             protocol_version: endpoint.protocol_version
-           ]
-         ]},
-      type: :supervisor,
-      restart: :transient,
-      shutdown: 10_000
-    }
+    child_spec = child_spec(endpoint_id, endpoint, ref)
 
     case DynamicSupervisor.start_child(@supervisor, child_spec) do
       {:ok, _pid} ->
@@ -167,6 +160,85 @@ defmodule Jido.MCP.ClientPool do
       client: {:via, Registry, {@registry, {:client, endpoint_id}}},
       transport: {:via, Registry, {@registry, {:transport, endpoint_id}}}
     }
+  end
+
+  defp child_spec(endpoint_id, %{transport: {:stdio, transport_opts}} = endpoint, ref) do
+    client_opts = [
+      transport: [layer: Anubis.Transport.STDIO, name: ref.transport],
+      client_info: endpoint.client_info,
+      capabilities: endpoint.capabilities,
+      protocol_version: endpoint.protocol_version,
+      name: ref.client
+    ]
+
+    children = [
+      {Anubis.Client.Base, client_opts},
+      {Jido.MCP.Transport.STDIO, transport_opts ++ [name: ref.transport, client: ref.client]}
+    ]
+
+    %{
+      id: {:mcp_client, endpoint_id},
+      start:
+        {Supervisor, :start_link, [children, [strategy: :one_for_all, name: ref.supervisor]]},
+      type: :supervisor,
+      restart: :transient,
+      shutdown: 10_000
+    }
+  end
+
+  defp child_spec(endpoint_id, endpoint, ref) do
+    %{
+      id: {:mcp_client, endpoint_id},
+      start:
+        {Anubis.Client.Supervisor, :start_link,
+         [
+           Jido.MCP.AnubisClient,
+           [
+             name: ref.supervisor,
+             client_name: ref.client,
+             transport_name: ref.transport,
+             transport: endpoint.transport,
+             client_info: endpoint.client_info,
+             capabilities: endpoint.capabilities,
+             protocol_version: endpoint.protocol_version
+           ]
+         ]},
+      type: :supervisor,
+      restart: :transient,
+      shutdown: 10_000
+    }
+  end
+
+  defp do_await_ready(client, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    cond do
+      remaining <= 0 ->
+        {:error, :client_not_ready}
+
+      true ->
+        timeout = min(remaining, 250)
+
+        case server_capabilities(client, timeout) do
+          capabilities when is_map(capabilities) ->
+            :ok
+
+          nil ->
+            Process.sleep(min(@ready_poll_ms, remaining))
+            do_await_ready(client, deadline)
+
+          {:error, _reason} = error ->
+            error
+        end
+    end
+  end
+
+  defp server_capabilities(client, timeout) do
+    Anubis.Client.Base.get_server_capabilities(client, timeout: timeout)
+  catch
+    :exit, {:timeout, _} -> nil
+    :exit, {:noproc, _} -> {:error, :client_not_started}
+    :exit, reason -> {:error, reason}
   end
 
   defp process_alive?(name) do
