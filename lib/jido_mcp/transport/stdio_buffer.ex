@@ -45,7 +45,7 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
 
   defp normalize_object_line(line) do
     case Jason.decode(line) do
-      {:ok, %{} = message} -> [Jason.encode!(message)]
+      {:ok, %{} = message} -> [Jason.encode!(message) <> "\n"]
       _ -> []
     end
   end
@@ -55,7 +55,7 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
       {:ok, messages} when is_list(messages) ->
         messages
         |> Enum.filter(&is_map/1)
-        |> Enum.map(&Jason.encode!/1)
+        |> Enum.map(&(Jason.encode!(&1) <> "\n"))
 
       _ ->
         []
