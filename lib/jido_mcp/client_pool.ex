@@ -181,7 +181,8 @@ defmodule Jido.MCP.ClientPool do
   defp ensure_started(endpoint_id, endpoint, state) do
     case Map.fetch(state.refs, endpoint_id) do
       {:ok, ref} ->
-        if process_alive?(ref.client) and process_alive?(ref.supervisor) do
+        if process_alive?(ref.client) and process_alive?(ref.supervisor) and
+             process_alive?(ref.transport) do
           {:ok, ref, state}
         else
           start_endpoint(endpoint_id, endpoint, state)

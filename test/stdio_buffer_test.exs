@@ -66,4 +66,23 @@ defmodule Jido.MCP.Transport.STDIOBufferTest do
     assert {messages, ""} = STDIOBuffer.push("", data)
     assert [%{"id" => "1", "result" => %{"ok" => true}}] = Enum.map(messages, &Jason.decode!/1)
   end
+
+  test "drops unterminated non-json stdout noise" do
+    assert {[], ""} = STDIOBuffer.push("", "server started")
+  end
+
+  test "ignores json stdout that is not json-rpc" do
+    assert {[], ""} = STDIOBuffer.push("", ~s({"level":"info","message":"ready"}) <> "\n")
+  end
+
+  test "filters non-json-rpc entries from batches" do
+    batch =
+      Jason.encode!([
+        %{"level" => "info", "message" => "ready"},
+        %{"jsonrpc" => "2.0", "id" => "1", "result" => %{"ok" => true}}
+      ])
+
+    assert {messages, ""} = STDIOBuffer.push("", batch <> "\n")
+    assert [%{"id" => "1", "result" => %{"ok" => true}}] = Enum.map(messages, &Jason.decode!/1)
+  end
 end

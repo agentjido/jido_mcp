@@ -136,6 +136,36 @@ defmodule Jido.MCP.ClientPoolTest do
     refute status.transport_alive?
   end
 
+  test "restarts tracked endpoints when transport ref is stale" do
+    {:ok, endpoint} =
+      Endpoint.new(:github, %{
+        transport: {:stdio, [command: "cat"]},
+        client_info: %{name: "my_app"}
+      })
+
+    client = start_supervised!({ReadyClient, %{}})
+    supervisor = start_supervised!({Agent, fn -> nil end})
+    stale_ref = %{client: client, supervisor: supervisor, transport: :missing_mcp_transport}
+
+    :sys.replace_state(ClientPool, fn state ->
+      %{
+        state
+        | endpoints: %{github: endpoint},
+          refs: %{github: stale_ref}
+      }
+    end)
+
+    assert {:ok, ^endpoint, ref} = ClientPool.ensure_client(:github)
+    refute ref == stale_ref
+    refute ref.transport == :missing_mcp_transport
+
+    on_exit(fn ->
+      if Process.alive?(ref.supervisor) do
+        DynamicSupervisor.terminate_child(Jido.MCP.ClientSupervisor, ref.supervisor)
+      end
+    end)
+  end
+
   test "await_ready waits until server capabilities are available" do
     client = start_supervised!({ReadyClient, [nil, %{"tools" => %{}}]})
 

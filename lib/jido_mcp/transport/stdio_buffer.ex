@@ -45,7 +45,7 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
 
   defp normalize_object_line(line) do
     case Jason.decode(line) do
-      {:ok, %{} = message} -> [Jason.encode!(message) <> "\n"]
+      {:ok, %{} = message} -> normalize_message(message)
       _ -> []
     end
   end
@@ -55,7 +55,7 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
       {:ok, messages} when is_list(messages) ->
         messages
         |> Enum.filter(&is_map/1)
-        |> Enum.map(&(Jason.encode!(&1) <> "\n"))
+        |> Enum.flat_map(&normalize_message/1)
 
       _ ->
         []
@@ -73,9 +73,12 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
         messages -> {messages, ""}
       end
     else
-      {[], buffer}
+      {[], ""}
     end
   end
+
+  defp normalize_message(%{"jsonrpc" => "2.0"} = message), do: [Jason.encode!(message) <> "\n"]
+  defp normalize_message(_message), do: []
 
   defp json_start?(<<"{", _::binary>>), do: true
   defp json_start?(<<"[", _::binary>>), do: true
