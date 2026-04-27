@@ -9,7 +9,6 @@ defmodule Jido.MCP.ClientPool do
 
   @registry Jido.MCP.Registry
   @supervisor Jido.MCP.ClientSupervisor
-  @ready_poll_ms 25
 
   @type client_ref :: %{
           client: GenServer.name(),
@@ -31,8 +30,7 @@ defmodule Jido.MCP.ClientPool do
   def await_ready(%{client: client}, timeout \\ 5_000) do
     case resolve_name(client) do
       pid when is_pid(pid) ->
-        deadline = System.monotonic_time(:millisecond) + timeout
-        do_await_ready(client, deadline)
+        anubis_await_ready(client, timeout)
 
       _ ->
         :ok
@@ -283,34 +281,10 @@ defmodule Jido.MCP.ClientPool do
     }
   end
 
-  defp do_await_ready(client, deadline) do
-    remaining = deadline - System.monotonic_time(:millisecond)
-
-    cond do
-      remaining <= 0 ->
-        {:error, :client_not_ready}
-
-      true ->
-        timeout = min(remaining, 250)
-
-        case server_capabilities(client, timeout) do
-          capabilities when is_map(capabilities) ->
-            :ok
-
-          nil ->
-            Process.sleep(min(@ready_poll_ms, remaining))
-            do_await_ready(client, deadline)
-
-          {:error, _reason} = error ->
-            error
-        end
-    end
-  end
-
-  defp server_capabilities(client, timeout) do
-    Anubis.Client.get_server_capabilities(client, timeout: timeout)
+  defp anubis_await_ready(client, timeout) do
+    Anubis.Client.await_ready(client, timeout: timeout)
   catch
-    :exit, {:timeout, _} -> nil
+    :exit, {:timeout, _} -> {:error, :client_not_ready}
     :exit, {:noproc, _} -> {:error, :client_not_started}
     :exit, reason -> {:error, reason}
   end

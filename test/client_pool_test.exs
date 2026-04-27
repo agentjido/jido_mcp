@@ -25,6 +25,19 @@ defmodule Jido.MCP.ClientPoolTest do
     def handle_call(:get_server_capabilities, _from, capabilities) do
       {:reply, capabilities, capabilities}
     end
+
+    def handle_call(:await_ready, _from, [nil, capabilities | rest]) do
+      {:reply, :ok, [capabilities | rest]}
+    end
+
+    def handle_call(:await_ready, _from, capabilities) when is_map(capabilities) do
+      {:reply, :ok, capabilities}
+    end
+
+    def handle_call(:await_ready, _from, nil) do
+      Process.sleep(100)
+      {:reply, :ok, nil}
+    end
   end
 
   setup do
