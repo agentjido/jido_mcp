@@ -44,6 +44,18 @@ defmodule Jido.MCP.Transport.STDIOBufferTest do
            ] = Enum.map(messages, &Jason.decode!/1)
   end
 
+  test "accepts complete JSON-RPC messages without trailing newline" do
+    response = ~s({"jsonrpc":"2.0","id":"1","result":{"ok":true}})
+
+    assert {messages, ""} = STDIOBuffer.push("", response)
+    assert [%{"id" => "1", "result" => %{"ok" => true}}] = Enum.map(messages, &Jason.decode!/1)
+  end
+
+  test "keeps incomplete trailing JSON buffered" do
+    assert {[], buffer} = STDIOBuffer.push("", ~s({"jsonrpc":"2.0","id":"1"))
+    assert buffer == ~s({"jsonrpc":"2.0","id":"1")
+  end
+
   test "ignores non-json stdout noise" do
     data = """
     server started

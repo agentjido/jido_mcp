@@ -10,7 +10,9 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
       lines
       |> Enum.flat_map(&normalize_line/1)
 
-    {messages, next_buffer}
+    {trailing_messages, next_buffer} = normalize_trailing_buffer(next_buffer)
+
+    {messages ++ trailing_messages, next_buffer}
   end
 
   defp split_complete_lines(data) do
@@ -59,4 +61,23 @@ defmodule Jido.MCP.Transport.STDIOBuffer do
         []
     end
   end
+
+  defp normalize_trailing_buffer(""), do: {[], ""}
+
+  defp normalize_trailing_buffer(buffer) do
+    normalized = String.trim(buffer)
+
+    if json_start?(normalized) do
+      case normalize_line(normalized) do
+        [] -> {[], buffer}
+        messages -> {messages, ""}
+      end
+    else
+      {[], buffer}
+    end
+  end
+
+  defp json_start?(<<"{", _::binary>>), do: true
+  defp json_start?(<<"[", _::binary>>), do: true
+  defp json_start?(_), do: false
 end
