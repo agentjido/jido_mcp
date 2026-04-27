@@ -29,8 +29,6 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
 
   @impl true
   def run(params, _context) do
-    IO.inspect(params, label: "Params in SyncToolsToAgent")
-
     with :ok <- ensure_jido_ai_loaded(),
          {:ok, endpoint_id} <- ClientPool.resolve_endpoint_id(params[:endpoint_id]),
          {:ok, response} <- Jido.MCP.list_tools(endpoint_id),
@@ -46,14 +44,12 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
         _ = unregister_previous(params[:agent_server], endpoint_id)
       end
 
-      IO.inspect("after with")
       {registered, failed} = register_modules(params[:agent_server], modules)
       skipped_failures = Enum.map(skipped, &{&1.tool_name, &1.reason})
       failed = skipped_failures ++ failed
-      IO.inspect("before ProxyRef")
+
       ProxyRegistry.put(params[:agent_server], endpoint_id, registered)
       ProxyRegistry.subscribe(params[:agent_server], endpoint_id, %{prefix: params[:prefix]})
-      IO.inspect("after ProxyRef")
 
       {:ok,
        %{
