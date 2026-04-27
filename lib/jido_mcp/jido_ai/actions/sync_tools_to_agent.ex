@@ -49,6 +49,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
       failed = skipped_failures ++ failed
 
       ProxyRegistry.put(params[:agent_server], endpoint_id, registered)
+      ProxyRegistry.subscribe(params[:agent_server], endpoint_id, %{prefix: params[:prefix]})
 
       {:ok,
        %{

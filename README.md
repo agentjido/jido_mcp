@@ -70,6 +70,23 @@ Runtime endpoints can be registered after application start:
 Runtime registration is process-local, rejects duplicate endpoint ids, and starts the MCP client
 only when the endpoint is first used.
 
+## Runtime Endpoint Lifecycle
+
+```elixir
+{:ok, endpoint} =
+  Jido.MCP.Endpoint.new(:runtime_demo, %{
+    transport: {:streamable_http, [base_url: "http://localhost:8080/mcp"]},
+    client_info: %{name: "my_app"}
+  })
+
+{:ok, ^endpoint} = Jido.MCP.register_endpoint(endpoint)
+{:ok, tools} = Jido.MCP.list_tools(:runtime_demo)
+
+{:ok, _removed} = Jido.MCP.unregister_endpoint(:runtime_demo)
+```
+
+For config changes at runtime, unregister then register the updated endpoint.
+
 ## Consume MCP APIs
 
 ```elixir
@@ -99,7 +116,10 @@ All calls return normalized envelopes:
 - `Jido.MCP.Actions.ReadResource`
 - `Jido.MCP.Actions.ListPrompts`
 - `Jido.MCP.Actions.GetPrompt`
+- `Jido.MCP.Actions.RegisterEndpoint`
 - `Jido.MCP.Actions.RefreshEndpoint`
+- `Jido.MCP.Actions.UnregisterEndpoint`
+- `Jido.MCP.Actions.SetDefaultEndpoint`
 
 ### Plugin
 
@@ -109,13 +129,17 @@ defmodule MyApp.Agent do
     name: "assistant",
     plugins: [
       {Jido.MCP.Plugins.MCP,
-       %{
-         default_endpoint: :github,
-         allowed_endpoints: [:github, :local_fs]
-       }}
+        %{
+          default_endpoint: :github,
+          allowed_endpoints: [:github, :local_fs]
+          # or allowed_endpoints: :all
+        }}
     ]
 end
 ```
+
+`allowed_endpoints` defaults to `[]` (deny-all) when omitted.
+Set it to `:all` to allow all currently configured/runtime-registered endpoints.
 
 Signal routes:
 
@@ -126,7 +150,13 @@ Signal routes:
 - `mcp.resources.read`
 - `mcp.prompts.list`
 - `mcp.prompts.get`
+- `mcp.endpoint.register`
 - `mcp.endpoint.refresh`
+- `mcp.endpoint.unregister`
+- `mcp.endpoint.default.set`
+
+To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set` with
+`%{endpoint_id: "github"}` (or `nil`/omitted to clear).
 
 ## Jido.AI Sync
 
@@ -134,10 +164,57 @@ Signal routes:
 
 `Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent` removes previously synced proxies.
 
+Tool sync uses deterministic MCP readiness: endpoint calls wait on
+`Anubis.Client.await_ready/2` before executing.
+
 Plugin route support:
 
 - `mcp.ai.sync_tools`
 - `mcp.ai.unsync_tools`
+
+### Host Runtime Orchestration (Signals)
+
+Host projects are expected to orchestrate runtime endpoint lifecycle and tool sync
+explicitly using plugin signals.
+
+Recommended signal sequences:
+
+- Register endpoint then sync tools
+  1. `mcp.endpoint.register`
+  2. `mcp.ai.sync_tools`
+- Refresh endpoint then resync tools
+  1. `mcp.endpoint.refresh`
+  2. `mcp.ai.sync_tools` (with `replace_existing: true`)
+- Unsync tools before unregistering endpoint
+  1. `mcp.ai.unsync_tools`
+  2. `mcp.endpoint.unregister`
+
+Example signal payloads:
+
+```elixir
+# mcp.endpoint.register
+%{
+  endpoint_id: "runtime_demo",
+  endpoint: %{
+    transport: {:streamable_http, [base_url: "http://localhost:8080/mcp"]},
+    client_info: %{name: "my_app"}
+  }
+}
+
+# mcp.ai.sync_tools
+%{
+  endpoint_id: "runtime_demo",
+  agent_server: :my_ai_agent,
+  replace_existing: true,
+  prefix: "mcp_"
+}
+
+# mcp.ai.unsync_tools
+%{endpoint_id: "runtime_demo", agent_server: :my_ai_agent}
+
+# mcp.endpoint.unregister
+%{endpoint_id: "runtime_demo"}
+```
 
 ## Expose Jido As MCP Server
 

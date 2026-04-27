@@ -22,7 +22,7 @@ defmodule Jido.MCP.JidoAI.ProxyRegistryTest do
   end
 
   setup do
-    Agent.update(ProxyRegistry, fn _ -> %{} end)
+    Agent.update(ProxyRegistry, fn _ -> %{entries: %{}, subscriptions: %{}} end)
     :ok
   end
 
@@ -53,5 +53,21 @@ defmodule Jido.MCP.JidoAI.ProxyRegistryTest do
     _ = ProxyRegistry.delete(:agent_two, :github)
     assert ProxyRegistry.module_in_use?(ToolA)
     refute ProxyRegistry.module_in_use?(ToolB)
+  end
+
+  test "tracks endpoint subscribers with options" do
+    ProxyRegistry.subscribe(:agent_one, :github, %{prefix: "runtime_"})
+    ProxyRegistry.subscribe(:agent_two, :github, %{})
+    ProxyRegistry.subscribe(:agent_two, :filesystem, %{})
+
+    github_subscribers = ProxyRegistry.subscribers_for(:github)
+
+    assert %{agent_server: :agent_one, options: %{prefix: "runtime_"}} in github_subscribers
+    assert %{agent_server: :agent_two, options: %{}} in github_subscribers
+
+    ProxyRegistry.unsubscribe(:agent_two, :github)
+
+    refute %{agent_server: :agent_two, options: %{}} in ProxyRegistry.subscribers_for(:github)
+    assert %{agent_server: :agent_two, options: %{}} in ProxyRegistry.subscribers_for(:filesystem)
   end
 end

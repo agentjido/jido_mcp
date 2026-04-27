@@ -47,6 +47,13 @@ defmodule Jido.MCP.Actions.HelpersTest do
              Helpers.resolve_endpoint_id(%{endpoint_id: :filesystem}, context)
   end
 
+  test "allows all endpoints when allowed_endpoints is :all" do
+    context = %{allowed_endpoints: :all}
+
+    assert {:ok, :github} = Helpers.resolve_endpoint_id(%{endpoint_id: :github}, context)
+    assert {:ok, :filesystem} = Helpers.resolve_endpoint_id(%{endpoint_id: :filesystem}, context)
+  end
+
   test "returns unknown endpoint for unconfigured endpoint names" do
     assert {:error, :unknown_endpoint} =
              Helpers.resolve_endpoint_id(%{endpoint_id: :missing}, %{})

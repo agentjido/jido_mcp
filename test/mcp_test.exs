@@ -114,7 +114,7 @@ defmodule Jido.MCPTest do
     assert {:ok, _} = MCP.list_tools(:github)
   end
 
-  test "refresh_endpoint refreshes then lists tools" do
+  test "refresh_endpoint delegates to client pool" do
     {:ok, endpoint} =
       Jido.MCP.Endpoint.new(:github, %{
         transport: {:stdio, [command: "cat", args: []]},
@@ -127,21 +127,9 @@ defmodule Jido.MCPTest do
        %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
     end)
 
-    expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
-      {:ok, endpoint,
-       %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
-    end)
-
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
-
-    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
-      assert opts[:timeout] == 444
-      {:ok, raw}
-    end)
-
-    assert {:ok, result} = MCP.refresh_endpoint(:github)
-    assert result.method == "tools/list"
-    assert result.data == %{"tools" => []}
+    assert {:ok, ^endpoint,
+            %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}} =
+             MCP.refresh_endpoint(:github)
   end
 
   test "endpoint_status passthrough" do
@@ -150,6 +138,35 @@ defmodule Jido.MCPTest do
     end)
 
     assert {:ok, %{endpoint_id: :github}} = MCP.endpoint_status(:github)
+  end
+
+  test "await_endpoint_ready delegates to ensured client readiness" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:github, %{
+        transport: {:stdio, [command: "cat", args: []]},
+        client_info: %{name: "test"},
+        timeouts: %{request_ms: 4_321}
+      })
+
+    ref = %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}
+
+    expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
+      {:ok, endpoint, ref}
+    end)
+
+    expect(Jido.MCP.ClientPool, :await_ready, fn ^ref, 123 ->
+      :ok
+    end)
+
+    assert :ok = MCP.await_endpoint_ready(:github, timeout: 123)
+  end
+
+  test "await_endpoint_ready returns ensure_client errors" do
+    expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
+      {:error, :not_ready}
+    end)
+
+    assert {:error, :not_ready} = MCP.await_endpoint_ready(:github)
   end
 
   test "register_endpoint delegates to client pool" do
@@ -180,6 +197,20 @@ defmodule Jido.MCPTest do
     assert {:error, {:endpoint_already_registered, :github}} = MCP.register_endpoint(endpoint)
   end
 
+  test "unregister_endpoint delegates to client pool" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:github, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "test"}
+      })
+
+    expect(Jido.MCP.ClientPool, :unregister_endpoint, fn :github ->
+      {:ok, endpoint}
+    end)
+
+    assert {:ok, ^endpoint} = MCP.unregister_endpoint(:github)
+  end
+
   test "returns client pool errors" do
     expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
       {:error, :unknown_endpoint}
@@ -196,30 +227,11 @@ defmodule Jido.MCPTest do
     assert {:error, :unknown_endpoint} = MCP.refresh_endpoint(:github)
   end
 
-  test "refresh_endpoint propagates list errors" do
-    {:ok, endpoint} =
-      Jido.MCP.Endpoint.new(:github, %{
-        transport: {:stdio, [command: "cat", args: []]},
-        client_info: %{name: "test"},
-        timeouts: %{request_ms: 444}
-      })
-
+  test "refresh_endpoint propagates client pool lifecycle errors" do
     expect(Jido.MCP.ClientPool, :refresh, fn :github ->
-      {:ok, endpoint,
-       %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
-    end)
-
-    expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
-      {:ok, endpoint,
-       %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
-    end)
-
-    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
-      assert opts[:timeout] == 444
       {:error, :not_started}
     end)
 
-    assert {:error, %{status: :error, type: :transport, details: :not_started}} =
-             MCP.refresh_endpoint(:github)
+    assert {:error, :not_started} = MCP.refresh_endpoint(:github)
   end
 end

@@ -10,7 +10,10 @@ defmodule Jido.MCP.ActionsTest do
     ListResources,
     ListTools,
     ReadResource,
-    RefreshEndpoint
+    RegisterEndpoint,
+    RefreshEndpoint,
+    SetDefaultEndpoint,
+    UnregisterEndpoint
   }
 
   alias Jido.MCP.{ClientPool, Config}
@@ -165,6 +168,44 @@ defmodule Jido.MCP.ActionsTest do
 
     assert {:ok, %{endpoint: :runtime}} =
              ListTools.run(%{endpoint_id: "runtime"}, %{allowed_endpoints: [:runtime]})
+  end
+
+  test "set default endpoint validates allowlist and supports clearing" do
+    assert {:ok, %{mcp: %{default_endpoint: :github}}} =
+             SetDefaultEndpoint.run(%{endpoint_id: "github"}, %{allowed_endpoints: [:github]})
+
+    assert {:error, :endpoint_not_allowed} =
+             SetDefaultEndpoint.run(%{endpoint_id: :filesystem}, %{allowed_endpoints: [:github]})
+
+    assert {:ok, %{mcp: %{default_endpoint: :filesystem}}} =
+             SetDefaultEndpoint.run(%{endpoint_id: :filesystem}, %{allowed_endpoints: :all})
+
+    assert {:ok, %{mcp: %{default_endpoint: nil}}} =
+             SetDefaultEndpoint.run(%{}, %{allowed_endpoints: :all})
+  end
+
+  test "register and unregister endpoint actions call API functions" do
+    attrs = %{
+      transport: {:stdio, [command: "echo"]},
+      client_info: %{name: "my_app"}
+    }
+
+    {:ok, endpoint} = Jido.MCP.Endpoint.new(:runtime, attrs)
+
+    Mimic.expect(Jido.MCP, :register_endpoint, fn %Jido.MCP.Endpoint{id: :runtime} = registered ->
+      assert registered.transport == endpoint.transport
+      {:ok, registered}
+    end)
+
+    Mimic.expect(Jido.MCP, :unregister_endpoint, fn :github ->
+      {:ok, endpoint}
+    end)
+
+    assert {:ok, %{endpoint_id: :runtime, registered: true, status: :ok}} =
+             RegisterEndpoint.run(%{endpoint_id: "runtime", endpoint: attrs}, %{})
+
+    assert {:ok, %Jido.MCP.Endpoint{id: :runtime}} =
+             UnregisterEndpoint.run(%{endpoint_id: "github"}, %{})
   end
 
   defp load_pool_from_config do

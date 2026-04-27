@@ -47,6 +47,14 @@ defmodule Jido.MCP.Plugins.MCPTest do
     assert state.default_endpoint == :github
   end
 
+  test "mount accepts :all allowlist" do
+    assert {:ok, state} =
+             MCP.mount(nil, %{allowed_endpoints: :all, default_endpoint: "github"})
+
+    assert state.allowed_endpoints == :all
+    assert state.default_endpoint == :github
+  end
+
   test "mount raises when default endpoint is not allowlisted" do
     assert_raise ArgumentError, ~r/default_endpoint/, fn ->
       MCP.mount(nil, %{default_endpoint: :github, allowed_endpoints: []})
@@ -67,6 +75,13 @@ defmodule Jido.MCP.Plugins.MCPTest do
 
     assert state.allowed_endpoints == [:runtime]
     assert state.default_endpoint == :runtime
+  end
+
+  test "plugin routes include runtime default endpoint setter" do
+    routes = MCP.signal_routes(%{})
+    assert {"mcp.endpoint.register", Jido.MCP.Actions.RegisterEndpoint} in routes
+    assert {"mcp.endpoint.unregister", Jido.MCP.Actions.UnregisterEndpoint} in routes
+    assert {"mcp.endpoint.default.set", Jido.MCP.Actions.SetDefaultEndpoint} in routes
   end
 
   defp load_pool_from_config do

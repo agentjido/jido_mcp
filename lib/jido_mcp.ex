@@ -15,6 +15,11 @@ defmodule Jido.MCP do
     ClientPool.register_endpoint(endpoint)
   end
 
+  @spec unregister_endpoint(endpoint_id()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
+  def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
+    ClientPool.unregister_endpoint(endpoint_id)
+  end
+
   @spec list_tools(endpoint_id(), keyword()) :: result()
   def list_tools(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "tools/list", opts, fn client, call_opts ->
@@ -66,11 +71,27 @@ defmodule Jido.MCP do
     end)
   end
 
-  @spec refresh_endpoint(endpoint_id()) :: result()
+  @spec refresh_endpoint(endpoint_id()) ::
+          {:ok, Endpoint.t(), ClientPool.client_ref()} | {:error, term()}
   def refresh_endpoint(endpoint_id) when is_atom(endpoint_id) do
-    with {:ok, _endpoint, _ref} <- ClientPool.refresh(endpoint_id),
-         {:ok, _} = listed <- list_tools(endpoint_id) do
-      listed
+    ClientPool.refresh(endpoint_id)
+  end
+
+  @doc """
+  Ensures an endpoint client is started and MCP initialization is complete.
+
+  This is intended for flows that must guarantee server readiness before
+  subsequent operations (for example runtime tool synchronization).
+  """
+  @spec await_endpoint_ready(endpoint_id(), keyword()) :: :ok | {:error, term()}
+  def await_endpoint_ready(endpoint_id, opts \\ []) when is_atom(endpoint_id) and is_list(opts) do
+    case ClientPool.ensure_client(endpoint_id) do
+      {:ok, endpoint, ref} ->
+        timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms)
+        ClientPool.await_ready(ref, timeout)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

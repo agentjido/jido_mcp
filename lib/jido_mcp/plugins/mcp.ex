@@ -6,6 +6,9 @@ require Jido.MCP.Actions.ReadResource
 require Jido.MCP.Actions.ListPrompts
 require Jido.MCP.Actions.GetPrompt
 require Jido.MCP.Actions.RefreshEndpoint
+require Jido.MCP.Actions.RegisterEndpoint
+require Jido.MCP.Actions.SetDefaultEndpoint
+require Jido.MCP.Actions.UnregisterEndpoint
 
 defmodule Jido.MCP.Plugins.MCP do
   @moduledoc """
@@ -25,7 +28,10 @@ defmodule Jido.MCP.Plugins.MCP do
       Jido.MCP.Actions.ReadResource,
       Jido.MCP.Actions.ListPrompts,
       Jido.MCP.Actions.GetPrompt,
-      Jido.MCP.Actions.RefreshEndpoint
+      Jido.MCP.Actions.RefreshEndpoint,
+      Jido.MCP.Actions.RegisterEndpoint,
+      Jido.MCP.Actions.UnregisterEndpoint,
+      Jido.MCP.Actions.SetDefaultEndpoint
     ],
     description: "Model Context Protocol integration",
     category: "mcp",
@@ -57,7 +63,10 @@ defmodule Jido.MCP.Plugins.MCP do
       {"mcp.resources.read", Jido.MCP.Actions.ReadResource},
       {"mcp.prompts.list", Jido.MCP.Actions.ListPrompts},
       {"mcp.prompts.get", Jido.MCP.Actions.GetPrompt},
-      {"mcp.endpoint.refresh", Jido.MCP.Actions.RefreshEndpoint}
+      {"mcp.endpoint.register", Jido.MCP.Actions.RegisterEndpoint},
+      {"mcp.endpoint.refresh", Jido.MCP.Actions.RefreshEndpoint},
+      {"mcp.endpoint.unregister", Jido.MCP.Actions.UnregisterEndpoint},
+      {"mcp.endpoint.default.set", Jido.MCP.Actions.SetDefaultEndpoint}
     ]
   end
 
@@ -72,6 +81,7 @@ defmodule Jido.MCP.Plugins.MCP do
 
   # Fail closed: if not explicitly configured, endpoint access is denied.
   defp normalize_allowed_endpoints(nil), do: {:ok, []}
+  defp normalize_allowed_endpoints(:all), do: {:ok, :all}
 
   defp normalize_allowed_endpoints(values) when is_list(values) do
     endpoints = ClientPool.endpoints()
@@ -92,6 +102,8 @@ defmodule Jido.MCP.Plugins.MCP do
   defp normalize_allowed_endpoints(_), do: {:error, {:invalid_allowed_endpoints, :invalid_type}}
 
   defp ensure_default_endpoint_allowed!(nil, _allowed_endpoints), do: :ok
+
+  defp ensure_default_endpoint_allowed!(_default_endpoint, :all), do: :ok
 
   defp ensure_default_endpoint_allowed!(default_endpoint, allowed_endpoints) do
     if default_endpoint in allowed_endpoints do

@@ -50,7 +50,7 @@ defmodule Jido.MCP.APITest do
     assert {:ok, _result} = Jido.MCP.list_tools(:github, timeout: 999, ready_timeout: 123)
   end
 
-  test "refresh_endpoint refreshes client lifecycle then lists tools" do
+  test "refresh_endpoint refreshes client lifecycle" do
     endpoint = %{timeouts: %{request_ms: 444}}
     ref = %{client: :mock_client}
 
@@ -58,20 +58,6 @@ defmodule Jido.MCP.APITest do
       {:ok, endpoint, ref}
     end)
 
-    Mimic.expect(Jido.MCP.ClientPool, :ensure_client, fn :github ->
-      {:ok, endpoint, ref}
-    end)
-
-    Mimic.expect(Jido.MCP.ClientPool, :await_ready, fn ^ref, 444 ->
-      :ok
-    end)
-
-    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
-      assert opts[:timeout] == 444
-      {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
-    end)
-
-    assert {:ok, result} = Jido.MCP.refresh_endpoint(:github)
-    assert result.data == %{"tools" => []}
+    assert {:ok, ^endpoint, ^ref} = Jido.MCP.refresh_endpoint(:github)
   end
 end

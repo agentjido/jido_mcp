@@ -46,6 +46,11 @@ defmodule Jido.MCP.ClientPool do
     end
   end
 
+  @spec unregister_endpoint(atom()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
+  def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
+    GenServer.call(__MODULE__, {:unregister_endpoint, endpoint_id})
+  end
+
   @spec fetch_endpoint(atom()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
   def fetch_endpoint(endpoint_id) when is_atom(endpoint_id) do
     GenServer.call(__MODULE__, {:fetch_endpoint, endpoint_id})
@@ -89,6 +94,23 @@ defmodule Jido.MCP.ClientPool do
     else
       state = put_in(state, [:endpoints, endpoint.id], endpoint)
       {:reply, {:ok, endpoint}, state}
+    end
+  end
+
+  def handle_call({:unregister_endpoint, endpoint_id}, _from, state) do
+    case fetch_endpoint(state, endpoint_id) do
+      {:ok, endpoint} ->
+        state =
+          endpoint_id
+          |> maybe_stop_endpoint(state)
+          |> then(fn updated_state ->
+            %{updated_state | endpoints: Map.delete(updated_state.endpoints, endpoint_id)}
+          end)
+
+        {:reply, {:ok, endpoint}, state}
+
+      {:error, :unknown_endpoint} ->
+        {:reply, {:error, :unknown_endpoint}, state}
     end
   end
 

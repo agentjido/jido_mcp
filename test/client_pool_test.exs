@@ -121,6 +121,12 @@ defmodule Jido.MCP.ClientPoolTest do
              ClientPool.register_endpoint(%{id: :invalid})
   end
 
+  test "unregister_endpoint removes endpoint and returns removed definition" do
+    assert {:ok, %Endpoint{id: :github}} = ClientPool.unregister_endpoint(:github)
+    assert {:error, :unknown_endpoint} = ClientPool.fetch_endpoint(:github)
+    assert {:error, :unknown_endpoint} = ClientPool.unregister_endpoint(:github)
+  end
+
   test "reports liveness flags for tracked refs" do
     :sys.replace_state(ClientPool, fn state ->
       put_in(state, [:refs, :github], %{
