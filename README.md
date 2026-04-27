@@ -25,9 +25,9 @@ end
 ```elixir
 config :jido_mcp, :endpoints,
   github: %{
-    transport: {:streamable_http, [base_url: "http://localhost:8080/mcp"]},
+    transport: {:streamable_http, [base_url: "http://localhost:8080", mcp_path: "/mcp"]},
     client_info: %{name: "my_app", version: "1.0.0"},
-    protocol_version: "2025-03-26",
+    protocol_version: "2025-06-18",
     capabilities: %{},
     timeouts: %{request_ms: 30_000}
   },
@@ -39,8 +39,36 @@ config :jido_mcp, :endpoints,
 
 Supported transports in v1:
 
-- `{:stdio, keyword()}`
-- `{:streamable_http, keyword()}`
+- `{:stdio, keyword()}` for shell/command-based MCP servers
+- `{:shell, keyword()}` as an alias normalized to `:stdio`
+- `{:sse, keyword()}` for legacy HTTP+SSE servers using protocol `2024-11-05`
+- `{:streamable_http, keyword()}` for MCP `2025-03-26` / `2025-06-18`, including optional SSE streaming via Anubis' `:enable_sse` option
+
+For Streamable HTTP, `:url` or a `:base_url` containing a non-root path is
+normalized to Anubis' `:base_url` + `:mcp_path` option shape.
+
+Endpoint config may also be loaded through an MFA callback:
+
+```elixir
+config :jido_mcp, :endpoints, {MyApp.MCPConfig, :endpoints, []}
+```
+
+The callback must return a map/keyword endpoint declaration or `{:ok, endpoints}`.
+
+Runtime endpoints can be registered after application start:
+
+```elixir
+{:ok, endpoint} =
+  Jido.MCP.Endpoint.new(:github, %{
+    transport: {:streamable_http, [base_url: "http://localhost:8080", mcp_path: "/mcp"]},
+    client_info: %{name: "my_app", version: "1.0.0"}
+  })
+
+{:ok, ^endpoint} = Jido.MCP.register_endpoint(endpoint)
+```
+
+Runtime registration is process-local, rejects duplicate endpoint ids, and starts the MCP client
+only when the endpoint is first used.
 
 ## Consume MCP APIs
 

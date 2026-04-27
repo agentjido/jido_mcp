@@ -13,6 +13,8 @@ defmodule Jido.MCP.ActionsTest do
     RefreshEndpoint
   }
 
+  alias Jido.MCP.{ClientPool, Config}
+
   setup :set_mimic_from_context
 
   setup do
@@ -29,12 +31,16 @@ defmodule Jido.MCP.ActionsTest do
       }
     })
 
+    load_pool_from_config()
+
     on_exit(fn ->
       if is_nil(previous) do
         Application.delete_env(:jido_mcp, :endpoints)
       else
         Application.put_env(:jido_mcp, :endpoints, previous)
       end
+
+      load_pool_from_config()
     end)
 
     :ok
@@ -142,5 +148,28 @@ defmodule Jido.MCP.ActionsTest do
 
     assert {:error, :endpoint_not_allowed} =
              ListTools.run(%{endpoint_id: :filesystem}, context)
+  end
+
+  test "actions resolve runtime-registered endpoints" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+
+    Mimic.expect(Jido.MCP, :list_tools, fn :runtime, _opts ->
+      {:ok, %{status: :ok, endpoint: :runtime}}
+    end)
+
+    assert {:ok, %{endpoint: :runtime}} =
+             ListTools.run(%{endpoint_id: "runtime"}, %{allowed_endpoints: [:runtime]})
+  end
+
+  defp load_pool_from_config do
+    :sys.replace_state(ClientPool, fn state ->
+      %{state | endpoints: Config.endpoints(), refs: %{}}
+    end)
   end
 end

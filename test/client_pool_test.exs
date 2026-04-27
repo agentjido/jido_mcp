@@ -47,10 +47,65 @@ defmodule Jido.MCP.ClientPoolTest do
   test "returns unknown endpoint when endpoint id is missing from pool state" do
     assert {:error, :unknown_endpoint} = ClientPool.ensure_client(:missing)
     assert {:error, :unknown_endpoint} = ClientPool.refresh(:missing)
+    assert {:error, :unknown_endpoint} = ClientPool.fetch_endpoint(:missing)
+    assert {:error, :unknown_endpoint} = ClientPool.resolve_endpoint_id(:missing)
+    assert {:error, :unknown_endpoint} = ClientPool.resolve_endpoint_id("missing")
   end
 
   test "returns not_started status before endpoint client is initialized" do
     assert {:error, :not_started} = ClientPool.endpoint_status(:github)
+  end
+
+  test "lists and resolves endpoints from pool state" do
+    assert [:github] = ClientPool.endpoint_ids()
+    assert %{github: %Endpoint{id: :github}} = ClientPool.endpoints()
+    assert {:ok, %Endpoint{id: :github}} = ClientPool.fetch_endpoint(:github)
+    assert {:ok, :github} = ClientPool.resolve_endpoint_id(:github)
+    assert {:ok, :github} = ClientPool.resolve_endpoint_id("github")
+    assert {:error, :endpoint_required} = ClientPool.resolve_endpoint_id(nil)
+    assert {:error, :invalid_endpoint_id} = ClientPool.resolve_endpoint_id("")
+  end
+
+  test "register_endpoint adds a runtime endpoint without starting a client" do
+    {:ok, endpoint} =
+      Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+    assert {:ok, ^endpoint} = ClientPool.fetch_endpoint(:runtime)
+    assert [:github, :runtime] = ClientPool.endpoint_ids()
+    assert {:ok, :runtime} = ClientPool.resolve_endpoint_id("runtime")
+    assert {:error, :not_started} = ClientPool.endpoint_status(:runtime)
+  end
+
+  test "register_endpoint rejects duplicate endpoint ids" do
+    {:ok, duplicate} =
+      Endpoint.new(:github, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:error, {:endpoint_already_registered, :github}} =
+             ClientPool.register_endpoint(duplicate)
+  end
+
+  test "register_endpoint validates endpoint structs" do
+    invalid = %Endpoint{
+      id: :invalid,
+      transport: {:websocket, [url: "ws://localhost:3000/mcp"]},
+      client_info: %{"name" => "my_app", "version" => "1.0.0"},
+      protocol_version: "2025-03-26",
+      capabilities: %{},
+      timeouts: %{request_ms: 30_000}
+    }
+
+    assert {:error, {:invalid_endpoint, {:invalid_transport, _, _}}} =
+             ClientPool.register_endpoint(invalid)
+
+    assert {:error, {:invalid_endpoint, {:invalid_endpoint, _, _}}} =
+             ClientPool.register_endpoint(%{id: :invalid})
   end
 
   test "reports liveness flags for tracked refs" do

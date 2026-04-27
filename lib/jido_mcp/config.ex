@@ -12,6 +12,7 @@ defmodule Jido.MCP.Config do
   def endpoints do
     :jido_mcp
     |> Application.get_env(:endpoints, %{})
+    |> load_endpoint_source()
     |> normalize_endpoints()
   end
 
@@ -57,6 +58,23 @@ defmodule Jido.MCP.Config do
   end
 
   def normalize_endpoints(_), do: %{}
+
+  defp load_endpoint_source({mod, fun, args})
+       when is_atom(mod) and is_atom(fun) and is_list(args) do
+    case apply(mod, fun, args) do
+      {:ok, endpoints} when is_map(endpoints) or is_list(endpoints) ->
+        endpoints
+
+      endpoints when is_map(endpoints) or is_list(endpoints) ->
+        endpoints
+
+      other ->
+        raise ArgumentError,
+              "Invalid endpoints callback return #{inspect(other)}: expected map/keyword or {:ok, map/keyword}"
+    end
+  end
+
+  defp load_endpoint_source(endpoints), do: endpoints
 
   defp normalize_id!(id) when is_atom(id), do: id
 

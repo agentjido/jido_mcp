@@ -27,7 +27,7 @@ defmodule Jido.MCPTest do
   test "list tools forwards cursor and timeout" do
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
 
-    expect(Anubis.Client.Base, :list_tools, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
       assert opts[:cursor] == "next"
       assert opts[:timeout] == 1_200
       {:ok, raw}
@@ -40,7 +40,7 @@ defmodule Jido.MCPTest do
   test "list resources forwards cursor and timeout" do
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"resources" => []}})
 
-    expect(Anubis.Client.Base, :list_resources, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_resources, fn :demo_client, opts ->
       assert opts[:cursor] == "c1"
       assert opts[:timeout] == 800
       {:ok, raw}
@@ -53,7 +53,7 @@ defmodule Jido.MCPTest do
   test "list resource templates forwards cursor and timeout" do
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"resourceTemplates" => []}})
 
-    expect(Anubis.Client.Base, :list_resource_templates, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_resource_templates, fn :demo_client, opts ->
       assert opts[:cursor] == "c2"
       assert opts[:timeout] == 900
       {:ok, raw}
@@ -66,7 +66,7 @@ defmodule Jido.MCPTest do
   test "list prompts forwards cursor and timeout" do
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"prompts" => []}})
 
-    expect(Anubis.Client.Base, :list_prompts, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_prompts, fn :demo_client, opts ->
       assert opts[:cursor] == "p1"
       assert opts[:timeout] == 1_100
       {:ok, raw}
@@ -79,17 +79,17 @@ defmodule Jido.MCPTest do
   test "call_tool, read_resource, and get_prompt pass through arguments" do
     ok_raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{}})
 
-    expect(Anubis.Client.Base, :call_tool, fn :demo_client, "search", %{"q" => "bug"}, opts ->
+    expect(Anubis.Client, :call_tool, fn :demo_client, "search", %{"q" => "bug"}, opts ->
       assert opts[:timeout] == 2_000
       {:ok, ok_raw}
     end)
 
-    expect(Anubis.Client.Base, :read_resource, fn :demo_client, "repo://README", opts ->
+    expect(Anubis.Client, :read_resource, fn :demo_client, "repo://README", opts ->
       assert opts[:timeout] == 2_100
       {:ok, ok_raw}
     end)
 
-    expect(Anubis.Client.Base, :get_prompt, fn :demo_client, "release", %{"v" => "1.0.0"}, opts ->
+    expect(Anubis.Client, :get_prompt, fn :demo_client, "release", %{"v" => "1.0.0"}, opts ->
       assert opts[:timeout] == 2_200
       {:ok, ok_raw}
     end)
@@ -102,7 +102,7 @@ defmodule Jido.MCPTest do
   test "uses endpoint default timeout when one is not provided", %{endpoint: endpoint} do
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
 
-    expect(Anubis.Client.Base, :list_tools, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
       assert opts[:timeout] == endpoint.timeouts.request_ms
       {:ok, raw}
     end)
@@ -130,7 +130,7 @@ defmodule Jido.MCPTest do
 
     raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
 
-    expect(Anubis.Client.Base, :list_tools, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
       assert opts[:timeout] == 444
       {:ok, raw}
     end)
@@ -146,6 +146,34 @@ defmodule Jido.MCPTest do
     end)
 
     assert {:ok, %{endpoint_id: :github}} = MCP.endpoint_status(:github)
+  end
+
+  test "register_endpoint delegates to client pool" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "test"}
+      })
+
+    expect(Jido.MCP.ClientPool, :register_endpoint, fn ^endpoint ->
+      {:ok, endpoint}
+    end)
+
+    assert {:ok, ^endpoint} = MCP.register_endpoint(endpoint)
+  end
+
+  test "register_endpoint propagates client pool errors" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:github, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "test"}
+      })
+
+    expect(Jido.MCP.ClientPool, :register_endpoint, fn ^endpoint ->
+      {:error, {:endpoint_already_registered, :github}}
+    end)
+
+    assert {:error, {:endpoint_already_registered, :github}} = MCP.register_endpoint(endpoint)
   end
 
   test "returns client pool errors" do
@@ -182,7 +210,7 @@ defmodule Jido.MCPTest do
        %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
     end)
 
-    expect(Anubis.Client.Base, :list_tools, fn :demo_client, opts ->
+    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
       assert opts[:timeout] == 444
       {:error, :not_started}
     end)

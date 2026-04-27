@@ -36,7 +36,7 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:error, %Jido.Action.Error.ExecutionFailureError{message: message}} =
              Jido.Exec.run(proxy_module, %{query: "bug"}, %{})
 
-    assert %{code: :invalid_key_type} = message
+    assert message == "all object keys must be strings"
   end
 
   test "skips tools with unsupported schema constructs" do

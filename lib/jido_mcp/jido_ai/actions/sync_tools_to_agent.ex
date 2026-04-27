@@ -20,7 +20,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
           |> Zoi.default(true)
       })
 
-  alias Jido.MCP.Config
+  alias Jido.MCP.ClientPool
   alias Jido.MCP.JidoAI.{ProxyGenerator, ProxyRegistry}
 
   @max_tools 200
@@ -30,7 +30,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
   @impl true
   def run(params, _context) do
     with :ok <- ensure_jido_ai_loaded(),
-         {:ok, endpoint_id} <- Config.resolve_endpoint_id(params[:endpoint_id]),
+         {:ok, endpoint_id} <- ClientPool.resolve_endpoint_id(params[:endpoint_id]),
          {:ok, response} <- Jido.MCP.list_tools(endpoint_id),
          tools when is_list(tools) <- get_in(response, [:data, "tools"]) || [],
          :ok <- ensure_tool_limit(tools),

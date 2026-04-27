@@ -12,13 +12,13 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
         agent_server: Zoi.any(description: "PID or registered name of the running Jido.AI agent")
       })
 
-  alias Jido.MCP.Config
+  alias Jido.MCP.ClientPool
   alias Jido.MCP.JidoAI.ProxyRegistry
 
   @impl true
   def run(params, _context) do
     with :ok <- ensure_jido_ai_loaded(),
-         {:ok, endpoint_id} <- Config.resolve_endpoint_id(params[:endpoint_id]) do
+         {:ok, endpoint_id} <- ClientPool.resolve_endpoint_id(params[:endpoint_id]) do
       jido_ai = Module.concat([Jido, AI])
       modules = ProxyRegistry.get(params[:agent_server], endpoint_id)
 

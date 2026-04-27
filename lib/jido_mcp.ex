@@ -3,15 +3,22 @@ defmodule Jido.MCP do
   Public API for calling MCP servers through direct Anubis client integration.
   """
 
-  alias Jido.MCP.{ClientPool, Response}
+  alias Jido.MCP.{ClientPool, Endpoint, Response}
 
   @type endpoint_id :: atom()
   @type result :: {:ok, map()} | {:error, map()}
 
+  @spec register_endpoint(Endpoint.t()) ::
+          {:ok, Endpoint.t()}
+          | {:error, {:endpoint_already_registered, atom()} | {:invalid_endpoint, term()}}
+  def register_endpoint(endpoint) do
+    ClientPool.register_endpoint(endpoint)
+  end
+
   @spec list_tools(endpoint_id(), keyword()) :: result()
   def list_tools(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "tools/list", opts, fn client, call_opts ->
-      Anubis.Client.Base.list_tools(client, call_opts)
+      Anubis.Client.list_tools(client, call_opts)
     end)
   end
 
@@ -19,35 +26,35 @@ defmodule Jido.MCP do
   def call_tool(endpoint_id, tool_name, arguments \\ %{}, opts \\ [])
       when is_atom(endpoint_id) and is_binary(tool_name) and is_map(arguments) do
     execute(endpoint_id, "tools/call", opts, fn client, call_opts ->
-      Anubis.Client.Base.call_tool(client, tool_name, arguments, call_opts)
+      Anubis.Client.call_tool(client, tool_name, arguments, call_opts)
     end)
   end
 
   @spec list_resources(endpoint_id(), keyword()) :: result()
   def list_resources(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "resources/list", opts, fn client, call_opts ->
-      Anubis.Client.Base.list_resources(client, call_opts)
+      Anubis.Client.list_resources(client, call_opts)
     end)
   end
 
   @spec list_resource_templates(endpoint_id(), keyword()) :: result()
   def list_resource_templates(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "resources/templates/list", opts, fn client, call_opts ->
-      Anubis.Client.Base.list_resource_templates(client, call_opts)
+      Anubis.Client.list_resource_templates(client, call_opts)
     end)
   end
 
   @spec read_resource(endpoint_id(), String.t(), keyword()) :: result()
   def read_resource(endpoint_id, uri, opts \\ []) when is_atom(endpoint_id) and is_binary(uri) do
     execute(endpoint_id, "resources/read", opts, fn client, call_opts ->
-      Anubis.Client.Base.read_resource(client, uri, call_opts)
+      Anubis.Client.read_resource(client, uri, call_opts)
     end)
   end
 
   @spec list_prompts(endpoint_id(), keyword()) :: result()
   def list_prompts(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
     execute(endpoint_id, "prompts/list", opts, fn client, call_opts ->
-      Anubis.Client.Base.list_prompts(client, call_opts)
+      Anubis.Client.list_prompts(client, call_opts)
     end)
   end
 
@@ -55,7 +62,7 @@ defmodule Jido.MCP do
   def get_prompt(endpoint_id, prompt_name, arguments \\ %{}, opts \\ [])
       when is_atom(endpoint_id) and is_binary(prompt_name) and is_map(arguments) do
     execute(endpoint_id, "prompts/get", opts, fn client, call_opts ->
-      Anubis.Client.Base.get_prompt(client, prompt_name, arguments, call_opts)
+      Anubis.Client.get_prompt(client, prompt_name, arguments, call_opts)
     end)
   end
 

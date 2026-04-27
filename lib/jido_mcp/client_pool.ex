@@ -5,7 +5,7 @@ defmodule Jido.MCP.ClientPool do
 
   use GenServer
 
-  alias Jido.MCP.{Config, Endpoint}
+  alias Jido.MCP.{Config, Endpoint, EndpointID}
 
   @registry Jido.MCP.Registry
   @supervisor Jido.MCP.ClientSupervisor
@@ -39,6 +39,36 @@ defmodule Jido.MCP.ClientPool do
     end
   end
 
+  @spec register_endpoint(Endpoint.t()) ::
+          {:ok, Endpoint.t()}
+          | {:error, {:endpoint_already_registered, atom()} | {:invalid_endpoint, term()}}
+  def register_endpoint(endpoint) do
+    with {:ok, endpoint} <- validate_endpoint(endpoint) do
+      GenServer.call(__MODULE__, {:register_endpoint, endpoint})
+    end
+  end
+
+  @spec fetch_endpoint(atom()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
+  def fetch_endpoint(endpoint_id) when is_atom(endpoint_id) do
+    GenServer.call(__MODULE__, {:fetch_endpoint, endpoint_id})
+  end
+
+  @spec endpoints() :: Config.endpoints()
+  def endpoints do
+    GenServer.call(__MODULE__, :endpoints)
+  end
+
+  @spec endpoint_ids() :: [atom()]
+  def endpoint_ids do
+    GenServer.call(__MODULE__, :endpoint_ids)
+  end
+
+  @spec resolve_endpoint_id(term()) ::
+          {:ok, atom()} | {:error, :endpoint_required | :invalid_endpoint_id | :unknown_endpoint}
+  def resolve_endpoint_id(endpoint_id) do
+    GenServer.call(__MODULE__, {:resolve_endpoint_id, endpoint_id})
+  end
+
   @spec endpoint_status(atom()) :: {:ok, map()} | {:error, term()}
   def endpoint_status(endpoint_id) when is_atom(endpoint_id) do
     GenServer.call(__MODULE__, {:endpoint_status, endpoint_id})
@@ -55,6 +85,31 @@ defmodule Jido.MCP.ClientPool do
   end
 
   @impl true
+  def handle_call({:register_endpoint, endpoint}, _from, state) do
+    if Map.has_key?(state.endpoints, endpoint.id) do
+      {:reply, {:error, {:endpoint_already_registered, endpoint.id}}, state}
+    else
+      state = put_in(state, [:endpoints, endpoint.id], endpoint)
+      {:reply, {:ok, endpoint}, state}
+    end
+  end
+
+  def handle_call({:fetch_endpoint, endpoint_id}, _from, state) do
+    {:reply, fetch_endpoint(state, endpoint_id), state}
+  end
+
+  def handle_call(:endpoints, _from, state) do
+    {:reply, state.endpoints, state}
+  end
+
+  def handle_call(:endpoint_ids, _from, state) do
+    {:reply, state.endpoints |> Map.keys() |> Enum.sort(), state}
+  end
+
+  def handle_call({:resolve_endpoint_id, endpoint_id}, _from, state) do
+    {:reply, EndpointID.resolve(endpoint_id, state.endpoints), state}
+  end
+
   def handle_call({:ensure_client, endpoint_id}, _from, state) do
     case fetch_endpoint(state, endpoint_id) do
       {:ok, endpoint} ->
@@ -107,6 +162,24 @@ defmodule Jido.MCP.ClientPool do
     end
   end
 
+  defp validate_endpoint(%Endpoint{id: endpoint_id} = endpoint) when is_atom(endpoint_id) do
+    endpoint_id
+    |> Endpoint.new(Map.from_struct(endpoint))
+    |> case do
+      {:ok, endpoint} -> {:ok, endpoint}
+      {:error, reason} -> {:error, {:invalid_endpoint, reason}}
+    end
+  end
+
+  defp validate_endpoint(%Endpoint{id: endpoint_id}) do
+    {:error, {:invalid_endpoint, {:invalid_endpoint_id, endpoint_id}}}
+  end
+
+  defp validate_endpoint(other) do
+    {:error,
+     {:invalid_endpoint, {:invalid_endpoint, other, "endpoint must be a %Jido.MCP.Endpoint{}"}}}
+  end
+
   defp ensure_started(endpoint_id, endpoint, state) do
     case Map.fetch(state.refs, endpoint_id) do
       {:ok, ref} ->
@@ -126,13 +199,16 @@ defmodule Jido.MCP.ClientPool do
     child_spec = child_spec(endpoint_id, endpoint, ref)
 
     case DynamicSupervisor.start_child(@supervisor, child_spec) do
-      {:ok, _pid} ->
+      {:ok, pid} ->
+        ref = %{ref | supervisor: pid}
         {:ok, ref, put_in(state, [:refs, endpoint_id], ref)}
 
-      {:error, {:already_started, _pid}} ->
+      {:error, {:already_started, pid}} ->
+        ref = %{ref | supervisor: pid}
         {:ok, ref, put_in(state, [:refs, endpoint_id], ref)}
 
-      {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, _pid}}}} ->
+      {:error, {:shutdown, {:failed_to_start_child, _child, {:already_started, pid}}}} ->
+        ref = %{ref | supervisor: pid}
         {:ok, ref, put_in(state, [:refs, endpoint_id], ref)}
 
       {:error, reason} ->
@@ -172,7 +248,7 @@ defmodule Jido.MCP.ClientPool do
     ]
 
     children = [
-      {Anubis.Client.Base, client_opts},
+      %{id: Anubis.Client, start: {Anubis.Client, :start_link_server, [client_opts]}},
       {Jido.MCP.Transport.STDIO, transport_opts ++ [name: ref.transport, client: ref.client]}
     ]
 
@@ -192,10 +268,8 @@ defmodule Jido.MCP.ClientPool do
       start:
         {Anubis.Client.Supervisor, :start_link,
          [
-           Jido.MCP.AnubisClient,
            [
-             name: ref.supervisor,
-             client_name: ref.client,
+             name: ref.client,
              transport_name: ref.transport,
              transport: endpoint.transport,
              client_info: endpoint.client_info,
@@ -234,7 +308,7 @@ defmodule Jido.MCP.ClientPool do
   end
 
   defp server_capabilities(client, timeout) do
-    Anubis.Client.Base.get_server_capabilities(client, timeout: timeout)
+    Anubis.Client.get_server_capabilities(client, timeout: timeout)
   catch
     :exit, {:timeout, _} -> nil
     :exit, {:noproc, _} -> {:error, :client_not_started}

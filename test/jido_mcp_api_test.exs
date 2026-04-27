@@ -14,7 +14,7 @@ defmodule Jido.MCP.APITest do
       {:ok, endpoint, ref}
     end)
 
-    Mimic.expect(Anubis.Client.Base, :list_tools, fn :mock_client, opts ->
+    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
       assert opts[:cursor] == "abc123"
       assert opts[:timeout] == 321
       {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
@@ -33,7 +33,7 @@ defmodule Jido.MCP.APITest do
       {:ok, endpoint, ref}
     end)
 
-    Mimic.expect(Anubis.Client.Base, :list_tools, fn :mock_client, opts ->
+    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
       assert opts[:timeout] == 999
       {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
     end)
@@ -53,7 +53,7 @@ defmodule Jido.MCP.APITest do
       {:ok, endpoint, ref}
     end)
 
-    Mimic.expect(Anubis.Client.Base, :list_tools, fn :mock_client, opts ->
+    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
       assert opts[:timeout] == 444
       {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
     end)

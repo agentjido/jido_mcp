@@ -1,6 +1,7 @@
 defmodule Jido.MCP.Actions.HelpersTest do
   use ExUnit.Case, async: false
 
+  alias Jido.MCP.{ClientPool, Config}
   alias Jido.MCP.Actions.Helpers
 
   setup do
@@ -17,12 +18,16 @@ defmodule Jido.MCP.Actions.HelpersTest do
       }
     })
 
+    load_pool_from_config()
+
     on_exit(fn ->
       if is_nil(previous) do
         Application.delete_env(:jido_mcp, :endpoints)
       else
         Application.put_env(:jido_mcp, :endpoints, previous)
       end
+
+      load_pool_from_config()
     end)
 
     :ok
@@ -48,5 +53,24 @@ defmodule Jido.MCP.Actions.HelpersTest do
 
     assert {:error, :unknown_endpoint} =
              Helpers.resolve_endpoint_id(%{endpoint_id: "missing"}, %{})
+  end
+
+  test "resolves runtime-registered endpoints" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+
+    assert {:ok, :runtime} = Helpers.resolve_endpoint_id(%{endpoint_id: "runtime"}, %{})
+    assert {:ok, :runtime} = Helpers.resolve_endpoint_id(%{endpoint_id: :runtime}, %{})
+  end
+
+  defp load_pool_from_config do
+    :sys.replace_state(ClientPool, fn state ->
+      %{state | endpoints: Config.endpoints(), refs: %{}}
+    end)
   end
 end

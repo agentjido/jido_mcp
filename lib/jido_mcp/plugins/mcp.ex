@@ -12,7 +12,7 @@ defmodule Jido.MCP.Plugins.MCP do
   Plugin exposing MCP consume-side routes (tools/resources/prompts/endpoints).
   """
 
-  alias Jido.MCP.{Config, EndpointID}
+  alias Jido.MCP.{ClientPool, EndpointID}
 
   use Jido.Plugin,
     name: "mcp",
@@ -68,13 +68,13 @@ defmodule Jido.MCP.Plugins.MCP do
   def transform_result(_action, result, _context), do: result
 
   defp normalize_default_endpoint(nil), do: {:ok, nil}
-  defp normalize_default_endpoint(value), do: EndpointID.resolve(value)
+  defp normalize_default_endpoint(value), do: ClientPool.resolve_endpoint_id(value)
 
   # Fail closed: if not explicitly configured, endpoint access is denied.
   defp normalize_allowed_endpoints(nil), do: {:ok, []}
 
   defp normalize_allowed_endpoints(values) when is_list(values) do
-    endpoints = Config.endpoints()
+    endpoints = ClientPool.endpoints()
 
     values
     |> Enum.reduce_while({:ok, []}, fn value, {:ok, acc} ->

@@ -3,6 +3,7 @@ defmodule Jido.MCP.PluginsTest do
 
   alias Jido.MCP.JidoAI.Plugins.MCPAI
   alias Jido.MCP.Plugins.MCP
+  alias Jido.MCP.{ClientPool, Config}
 
   setup do
     original = Application.get_env(:jido_mcp, :endpoints)
@@ -18,12 +19,16 @@ defmodule Jido.MCP.PluginsTest do
       }
     })
 
+    load_pool_from_config()
+
     on_exit(fn ->
       if is_nil(original) do
         Application.delete_env(:jido_mcp, :endpoints)
       else
         Application.put_env(:jido_mcp, :endpoints, original)
       end
+
+      load_pool_from_config()
     end)
 
     :ok
@@ -70,5 +75,11 @@ defmodule Jido.MCP.PluginsTest do
 
     assert {:ok, :continue} = MCPAI.handle_signal(%{}, %{})
     assert %{ok: true} == MCPAI.transform_result(nil, %{ok: true}, %{})
+  end
+
+  defp load_pool_from_config do
+    :sys.replace_state(ClientPool, fn state ->
+      %{state | endpoints: Config.endpoints(), refs: %{}}
+    end)
   end
 end

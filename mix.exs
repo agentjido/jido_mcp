@@ -39,7 +39,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.0"},
-      {:anubis_mcp, "~> 0.17.0"},
+      {:anubis_mcp, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},

@@ -4,6 +4,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
 
   alias Jido.MCP.JidoAI.Actions.{SyncToolsToAgent, UnsyncToolsFromAgent}
   alias Jido.MCP.JidoAI.ProxyRegistry
+  alias Jido.MCP.{ClientPool, Config}
 
   defmodule Elixir.Jido.AI do
     def register_tool(_agent_server, _module), do: {:ok, %{}}
@@ -22,6 +23,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
       }
     })
 
+    load_pool_from_config()
     Agent.update(ProxyRegistry, fn _ -> %{} end)
 
     on_exit(fn ->
@@ -30,6 +32,8 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
       else
         Application.put_env(:jido_mcp, :endpoints, previous)
       end
+
+      load_pool_from_config()
     end)
 
     :ok
@@ -66,6 +70,45 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result.registered_count == 1
     assert result.failed_count == 0
     assert length(ProxyRegistry.get(:agent_a, :github)) == 1
+  end
+
+  test "sync resolves runtime-registered endpoint ids" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+
+    Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :runtime ->
+      {:ok, %{data: %{"tools" => []}}}
+    end)
+
+    assert {:ok, result} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: "runtime", agent_server: :agent_a, replace_existing: true},
+               %{}
+             )
+
+    assert result.endpoint_id == :runtime
+    assert result.discovered_count == 0
+  end
+
+  test "unsync resolves runtime-registered endpoint ids" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:runtime, %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+
+    assert {:ok, result} =
+             UnsyncToolsFromAgent.run(%{endpoint_id: "runtime", agent_server: :agent_a}, %{})
+
+    assert result.endpoint_id == :runtime
+    assert result.removed_count == 0
   end
 
   test "sync fails closed when discovered tools exceed configured cap" do
@@ -125,5 +168,11 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result_b.removed_count == 1
     assert result_b.retained_count == 0
     assert result_b.purged_count == 1
+  end
+
+  defp load_pool_from_config do
+    :sys.replace_state(ClientPool, fn state ->
+      %{state | endpoints: Config.endpoints(), refs: %{}}
+    end)
   end
 end

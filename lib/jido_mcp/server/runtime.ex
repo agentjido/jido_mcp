@@ -245,9 +245,10 @@ defmodule Jido.MCP.Server.Runtime do
   defp build_action_context(%Frame{} = frame) do
     %{
       mcp_frame: frame,
-      transport: frame.transport,
-      request: frame.request,
-      assigns: frame.assigns
+      mcp_context: Map.get(frame, :context),
+      transport: Map.get(frame, :transport, %{}),
+      request: Map.get(frame, :request),
+      assigns: Map.get(frame, :assigns, %{})
     }
   end
 
