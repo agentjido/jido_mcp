@@ -21,6 +21,10 @@ defmodule Jido.MCPTest do
        %{client: :demo_client, supervisor: :demo_supervisor, transport: :demo_transport}}
     end)
 
+    stub(Jido.MCP.ClientPool, :await_ready, fn %{client: :demo_client}, _timeout ->
+      :ok
+    end)
+
     %{endpoint: endpoint}
   end
 

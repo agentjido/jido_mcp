@@ -147,4 +147,9 @@ defmodule Jido.MCP.ClientPoolTest do
 
     assert {:error, :client_not_ready} = ClientPool.await_ready(%{client: client}, 30)
   end
+
+  test "await_ready returns client_not_started when the client ref is stale" do
+    assert {:error, :client_not_started} =
+             ClientPool.await_ready(%{client: :missing_mcp_client}, 30)
+  end
 end

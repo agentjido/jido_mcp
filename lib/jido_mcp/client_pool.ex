@@ -33,7 +33,7 @@ defmodule Jido.MCP.ClientPool do
         anubis_await_ready(client, timeout)
 
       _ ->
-        :ok
+        {:error, :client_not_started}
     end
   end
 

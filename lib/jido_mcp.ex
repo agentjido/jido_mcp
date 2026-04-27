@@ -82,8 +82,12 @@ defmodule Jido.MCP do
   defp execute(endpoint_id, method, opts, fun) do
     with {:ok, endpoint, ref} <- ClientPool.ensure_client(endpoint_id) do
       timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms)
-      ready_timeout = Keyword.get(opts, :ready_timeout, min(timeout, 5_000))
-      call_opts = Keyword.put_new(opts, :timeout, timeout)
+      ready_timeout = Keyword.get(opts, :ready_timeout, timeout)
+
+      call_opts =
+        opts
+        |> Keyword.delete(:ready_timeout)
+        |> Keyword.put_new(:timeout, timeout)
 
       case ClientPool.await_ready(ref, ready_timeout) do
         :ok ->
