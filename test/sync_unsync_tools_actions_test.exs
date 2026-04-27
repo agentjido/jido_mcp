@@ -7,8 +7,44 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
   alias Jido.MCP.{ClientPool, Config}
 
   defmodule Elixir.Jido.AI do
-    def register_tool(_agent_server, _module), do: {:ok, %{}}
-    def unregister_tool(_agent_server, _tool_name), do: {:ok, %{}}
+    def register_tool(agent_server, module) do
+      send(self(), {:register_tool, agent_server, module})
+      {:ok, %{}}
+    end
+
+    def unregister_tool(agent_server, tool_name) do
+      send(self(), {:unregister_tool, agent_server, tool_name})
+      {:ok, %{}}
+    end
+
+    def register_tool_direct(agent, module) do
+      send(self(), {:register_tool_direct, module})
+      {:ok, put_tool(agent, module)}
+    end
+
+    def unregister_tool_direct(agent, tool_name) do
+      send(self(), {:unregister_tool_direct, tool_name})
+      {:ok, remove_tool(agent, tool_name)}
+    end
+
+    defp put_tool(agent, module) do
+      Jido.Agent.Strategy.State.update(agent, fn state ->
+        config = Map.get(state, :config, %{})
+        tools = [module | Map.get(config, :tools, [])] |> Enum.uniq()
+        Map.put(state, :config, Map.put(config, :tools, tools))
+      end)
+    end
+
+    defp remove_tool(agent, tool_name) do
+      Jido.Agent.Strategy.State.update(agent, fn state ->
+        config = Map.get(state, :config, %{})
+
+        tools =
+          Enum.reject(Map.get(config, :tools, []), fn module -> module.name() == tool_name end)
+
+        Map.put(state, :config, Map.put(config, :tools, tools))
+      end)
+    end
   end
 
   setup :set_mimic_from_context
@@ -70,6 +106,40 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result.registered_count == 1
     assert result.failed_count == 0
     assert length(ProxyRegistry.get(:agent_a, :github)) == 1
+    assert_received {:register_tool, :agent_a, _module}
+  end
+
+  test "sync uses direct registration when an agent is present in action context" do
+    Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok,
+       %{
+         data: %{
+           "tools" => [
+             %{
+               "name" => "search_issues",
+               "description" => "Search issues",
+               "inputSchema" => %{"type" => "object", "properties" => %{}}
+             }
+           ]
+         }
+       }}
+    end)
+
+    agent = %Jido.Agent{state: %{}}
+
+    assert {:ok, result, effects} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: "github", agent_server: :agent_a, replace_existing: true},
+               %{agent: agent}
+             )
+
+    assert result.registered_count == 1
+    assert [%Jido.Agent.StateOp.SetPath{path: [:__strategy__], value: strategy_state}] = effects
+    assert [module] = get_in(strategy_state, [:config, :tools])
+    assert result.registered_tools == [module.name()]
+    assert String.ends_with?(module.name(), "search_issues")
+    assert_received {:register_tool_direct, ^module}
+    refute_received {:register_tool, :agent_a, ^module}
   end
 
   test "sync resolves runtime-registered endpoint ids" do
@@ -254,9 +324,53 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert ProxyRegistry.get(:agent_a, :runtime) == []
   end
 
+  test "unsync uses direct unregistration when an agent is present in action context" do
+    tool = %{
+      "name" => "search_issues",
+      "description" => "Search issues",
+      "inputSchema" => %{"type" => "object", "properties" => %{}}
+    }
+
+    Mimic.stub(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok, %{data: %{"tools" => [tool]}}}
+    end)
+
+    agent = %Jido.Agent{state: %{}}
+
+    assert {:ok, _result, sync_effects} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: :github, agent_server: :agent_a, replace_existing: true},
+               %{agent: agent}
+             )
+
+    assert [%Jido.Agent.StateOp.SetPath{value: sync_strategy_state}] = sync_effects
+    assert [module] = get_in(sync_strategy_state, [:config, :tools])
+    tool_name = module.name()
+
+    agent = apply_strategy_effect(agent, sync_effects)
+
+    assert {:ok, result, effects} =
+             UnsyncToolsFromAgent.run(%{endpoint_id: :github, agent_server: :agent_a}, %{
+               agent: agent
+             })
+
+    assert result.removed_count == 1
+    assert result.purged_count == 1
+    assert [%Jido.Agent.StateOp.SetPath{path: [:__strategy__], value: strategy_state}] = effects
+    assert get_in(strategy_state, [:config, :tools]) == []
+    assert_received {:unregister_tool_direct, ^tool_name}
+    refute_received {:unregister_tool, :agent_a, ^tool_name}
+  end
+
   defp load_pool_from_config do
     :sys.replace_state(ClientPool, fn state ->
       %{state | endpoints: Config.endpoints(), refs: %{}}
     end)
+  end
+
+  defp apply_strategy_effect(agent, [
+         %Jido.Agent.StateOp.SetPath{path: [:__strategy__], value: state}
+       ]) do
+    %{agent | state: Map.put(agent.state, :__strategy__, state)}
   end
 end

@@ -20,6 +20,9 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
           |> Zoi.default(true)
       })
 
+  alias Jido.Agent
+  alias Jido.Agent.StateOp
+  alias Jido.Agent.Strategy.State, as: StratState
   alias Jido.MCP.ClientPool
   alias Jido.MCP.JidoAI.{ProxyGenerator, ProxyRegistry}
 
@@ -28,7 +31,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
   @max_schema_properties 200
 
   @impl true
-  def run(params, _context) do
+  def run(params, context) do
     with :ok <- ensure_jido_ai_loaded(),
          {:ok, endpoint_id} <- ClientPool.resolve_endpoint_id(params[:endpoint_id]),
          {:ok, response} <- Jido.MCP.list_tools(endpoint_id),
@@ -40,28 +43,36 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
              max_schema_depth: @max_schema_depth,
              max_schema_properties: @max_schema_properties
            ) do
-      if params[:replace_existing] != false do
-        _ = unregister_previous(params[:agent_server], endpoint_id)
-      end
+      target_agent = context_agent(context)
 
-      {registered, failed} = register_modules(params[:agent_server], modules)
+      target_agent =
+        if params[:replace_existing] != false do
+          unregister_previous(params[:agent_server], endpoint_id, target_agent)
+        else
+          target_agent
+        end
+
+      {registered, failed, target_agent} =
+        register_modules(params[:agent_server], modules, target_agent)
+
       skipped_failures = Enum.map(skipped, &{&1.tool_name, &1.reason})
       failed = skipped_failures ++ failed
 
       ProxyRegistry.put(params[:agent_server], endpoint_id, registered)
       ProxyRegistry.subscribe(params[:agent_server], endpoint_id, %{prefix: params[:prefix]})
 
-      {:ok,
-       %{
-         endpoint_id: endpoint_id,
-         discovered_count: length(tools),
-         registered_count: length(registered),
-         failed_count: length(failed),
-         failed: failed,
-         warnings: warnings,
-         skipped_count: length(skipped),
-         registered_tools: Enum.map(registered, & &1.name())
-       }}
+      result = %{
+        endpoint_id: endpoint_id,
+        discovered_count: length(tools),
+        registered_count: length(registered),
+        failed_count: length(failed),
+        failed: failed,
+        warnings: warnings,
+        skipped_count: length(skipped),
+        registered_tools: Enum.map(registered, & &1.name())
+      }
+
+      with_agent_effect({:ok, result}, target_agent)
     end
   end
 
@@ -81,7 +92,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
 
   defp ensure_tool_limit(_tools), do: :ok
 
-  defp register_modules(agent_server, modules) do
+  defp register_modules(agent_server, modules, nil) do
     jido_ai = Module.concat([Jido, AI])
 
     Enum.reduce(modules, {[], []}, fn module, {ok, err} ->
@@ -90,10 +101,20 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
         {:error, reason} -> {ok, [{module, reason} | err]}
       end
     end)
-    |> then(fn {ok, err} -> {Enum.reverse(ok), Enum.reverse(err)} end)
+    |> then(fn {ok, err} -> {Enum.reverse(ok), Enum.reverse(err), nil} end)
   end
 
-  defp unregister_previous(agent_server, endpoint_id) do
+  defp register_modules(_agent_server, modules, %Agent{} = agent) do
+    Enum.reduce(modules, {agent, [], []}, fn module, {agent, ok, err} ->
+      case register_tool_direct(agent, module) do
+        {:ok, agent} -> {agent, [module | ok], err}
+        {:error, reason} -> {agent, ok, [{module, reason} | err]}
+      end
+    end)
+    |> then(fn {agent, ok, err} -> {Enum.reverse(ok), Enum.reverse(err), agent} end)
+  end
+
+  defp unregister_previous(agent_server, endpoint_id, nil) do
     jido_ai = Module.concat([Jido, AI])
 
     agent_server
@@ -103,6 +124,50 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
     end)
 
     _ = ProxyRegistry.delete(agent_server, endpoint_id)
-    :ok
+    nil
+  end
+
+  defp unregister_previous(agent_server, endpoint_id, %Agent{} = agent) do
+    agent =
+      agent_server
+      |> ProxyRegistry.get(endpoint_id)
+      |> Enum.reduce(agent, fn module, acc ->
+        case unregister_tool_direct(acc, module.name()) do
+          {:ok, agent} -> agent
+          {:error, _reason} -> acc
+        end
+      end)
+
+    _ = ProxyRegistry.delete(agent_server, endpoint_id)
+    agent
+  end
+
+  defp context_agent(%{agent: %Agent{} = agent}), do: agent
+  defp context_agent(_context), do: nil
+
+  defp register_tool_direct(agent, module) do
+    jido_ai = Module.concat([Jido, AI])
+
+    if function_exported?(jido_ai, :register_tool_direct, 2) do
+      apply(jido_ai, :register_tool_direct, [agent, module])
+    else
+      {:error, :jido_ai_direct_tool_api_not_available}
+    end
+  end
+
+  defp unregister_tool_direct(agent, tool_name) do
+    jido_ai = Module.concat([Jido, AI])
+
+    if function_exported?(jido_ai, :unregister_tool_direct, 2) do
+      apply(jido_ai, :unregister_tool_direct, [agent, tool_name])
+    else
+      {:error, :jido_ai_direct_tool_api_not_available}
+    end
+  end
+
+  defp with_agent_effect(response, nil), do: response
+
+  defp with_agent_effect({:ok, result}, %Agent{} = agent) do
+    {:ok, result, [StateOp.set_path([StratState.key()], StratState.get(agent, %{}))]}
   end
 end
