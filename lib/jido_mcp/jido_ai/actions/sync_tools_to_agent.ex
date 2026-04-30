@@ -55,7 +55,11 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
       {registered, failed, target_agent} =
         register_modules(params[:agent_server], modules, target_agent)
 
-      skipped_failures = Enum.map(skipped, &%{&1.tool_name => &1.reason})
+      skipped_failures =
+        Enum.map(skipped, fn skipped ->
+          %{tool_name: skipped.tool_name, reason: skipped.reason}
+        end)
+
       failed = skipped_failures ++ failed
 
       ProxyRegistry.put(params[:agent_server], endpoint_id, registered)
@@ -98,7 +102,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
     Enum.reduce(modules, {[], []}, fn module, {ok, err} ->
       case apply(jido_ai, :register_tool, [agent_server, module]) do
         {:ok, _agent} -> {[module | ok], err}
-        {:error, reason} -> {ok, [{module, reason} | err]}
+        {:error, reason} -> {ok, [failure_entry(module, reason) | err]}
       end
     end)
     |> then(fn {ok, err} -> {Enum.reverse(ok), Enum.reverse(err), nil} end)
@@ -108,7 +112,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
     Enum.reduce(modules, {agent, [], []}, fn module, {agent, ok, err} ->
       case register_tool_direct(agent, module) do
         {:ok, agent} -> {agent, [module | ok], err}
-        {:error, reason} -> {agent, ok, [{module, reason} | err]}
+        {:error, reason} -> {agent, ok, [failure_entry(module, reason) | err]}
       end
     end)
     |> then(fn {agent, ok, err} -> {Enum.reverse(ok), Enum.reverse(err), agent} end)
@@ -163,6 +167,10 @@ defmodule Jido.MCP.JidoAI.Actions.SyncToolsToAgent do
     else
       {:error, :jido_ai_direct_tool_api_not_available}
     end
+  end
+
+  defp failure_entry(module, reason) do
+    %{tool_name: module.name(), module: module, reason: reason}
   end
 
   defp with_agent_effect(response, nil), do: response

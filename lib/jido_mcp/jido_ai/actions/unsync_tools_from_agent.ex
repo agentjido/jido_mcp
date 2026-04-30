@@ -66,7 +66,7 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
     Enum.reduce(modules, {[], []}, fn module, {ok, err} ->
       case apply(jido_ai, :unregister_tool, [agent_server, module.name()]) do
         {:ok, _agent} -> {[module.name() | ok], err}
-        {:error, reason} -> {ok, [{module.name(), reason} | err]}
+        {:error, reason} -> {ok, [tool_failure_entry(module, reason) | err]}
       end
     end)
     |> then(fn {ok, err} -> {ok, err, nil} end)
@@ -76,7 +76,7 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
     Enum.reduce(modules, {[], [], agent}, fn module, {ok, err, agent} ->
       case unregister_tool_direct(agent, module.name()) do
         {:ok, agent} -> {[module.name() | ok], err, agent}
-        {:error, reason} -> {ok, [{module.name(), reason} | err], agent}
+        {:error, reason} -> {ok, [tool_failure_entry(module, reason) | err], agent}
       end
     end)
   end
@@ -89,8 +89,11 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
 
         true ->
           case purge_module(module) do
-            :ok -> {[module | purged], retained, failed}
-            {:error, reason} -> {purged, retained, [{module, reason} | failed]}
+            :ok ->
+              {[module | purged], retained, failed}
+
+            {:error, reason} ->
+              {purged, retained, [module_failure_entry(module, reason) | failed]}
           end
       end
     end)
@@ -127,6 +130,14 @@ defmodule Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent do
     else
       {:error, :jido_ai_direct_tool_api_not_available}
     end
+  end
+
+  defp tool_failure_entry(module, reason) do
+    %{tool_name: module.name(), module: module, reason: reason}
+  end
+
+  defp module_failure_entry(module, reason) do
+    %{module: module, reason: reason}
   end
 
   defp with_agent_effect(response, nil), do: response
