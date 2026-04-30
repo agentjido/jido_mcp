@@ -191,6 +191,7 @@ defmodule Jido.MCP.ActionsTest do
     }
 
     {:ok, endpoint} = Jido.MCP.Endpoint.new(:runtime, attrs)
+    {:ok, github_endpoint} = Jido.MCP.Endpoint.new(:github, attrs)
 
     Mimic.expect(Jido.MCP, :register_endpoint, fn %Jido.MCP.Endpoint{id: :runtime} = registered ->
       assert registered.transport == endpoint.transport
@@ -198,13 +199,22 @@ defmodule Jido.MCP.ActionsTest do
     end)
 
     Mimic.expect(Jido.MCP, :unregister_endpoint, fn :github ->
-      {:ok, endpoint}
+      {:ok, github_endpoint}
     end)
 
     assert {:ok, %{endpoint_id: :runtime, registered: true, status: :ok}} =
              RegisterEndpoint.run(%{endpoint_id: "runtime", endpoint: attrs}, %{})
 
-    assert {:ok, %Jido.MCP.Endpoint{id: :runtime}} =
+    assert {:ok, %{endpoint_id: :github, registered: false, status: :ok}} =
+             UnregisterEndpoint.run(%{endpoint_id: "github"}, %{})
+  end
+
+  test "unregister endpoint action propagates API errors" do
+    Mimic.expect(Jido.MCP, :unregister_endpoint, fn :github ->
+      {:error, :unknown_endpoint}
+    end)
+
+    assert {:error, :unknown_endpoint} =
              UnregisterEndpoint.run(%{endpoint_id: "github"}, %{})
   end
 

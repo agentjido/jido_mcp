@@ -7,9 +7,19 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
   alias Jido.MCP.{ClientPool, Config}
 
   defmodule Elixir.Jido.AI do
+    def register_tool(:fail_register, module) do
+      send(self(), {:register_tool, :fail_register, module})
+      {:error, :register_failed}
+    end
+
     def register_tool(agent_server, module) do
       send(self(), {:register_tool, agent_server, module})
       {:ok, %{}}
+    end
+
+    def unregister_tool(:fail_unregister, tool_name) do
+      send(self(), {:unregister_tool, :fail_unregister, tool_name})
+      {:error, :unregister_failed}
     end
 
     def unregister_tool(agent_server, tool_name) do
@@ -174,6 +184,65 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
              SyncToolsToAgent.run(%{endpoint_id: :github, agent_server: :agent_a}, %{})
   end
 
+  test "sync reports skipped schema failures as merge-safe maps" do
+    Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok,
+       %{
+         data: %{
+           "tools" => [
+             %{
+               "name" => "run_secret_scanning",
+               "description" => "Run secret scanning",
+               "inputSchema" => %{
+                 "type" => "object",
+                 "properties" => %{
+                   "files" => %{"anyOf" => [%{"type" => "string"}]}
+                 }
+               }
+             }
+           ]
+         }
+       }}
+    end)
+
+    assert {:ok, result} =
+             SyncToolsToAgent.run(%{endpoint_id: :github, agent_server: :agent_a}, %{})
+
+    assert result.registered_count == 0
+    assert result.failed_count == 1
+    assert [%{tool_name: "run_secret_scanning", reason: reason}] = result.failed
+    assert String.contains?(reason, "tool schema rejected")
+    assert_merge_safe_failed(result.failed)
+  end
+
+  test "sync reports registration failures as merge-safe maps" do
+    Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok,
+       %{
+         data: %{
+           "tools" => [
+             %{
+               "name" => "search_issues",
+               "description" => "Search issues",
+               "inputSchema" => %{"type" => "object", "properties" => %{}}
+             }
+           ]
+         }
+       }}
+    end)
+
+    assert {:ok, result} =
+             SyncToolsToAgent.run(%{endpoint_id: :github, agent_server: :fail_register}, %{})
+
+    assert result.registered_count == 0
+    assert result.failed_count == 1
+    assert [%{tool_name: tool_name, module: module, reason: :register_failed}] = result.failed
+    assert is_atom(module)
+    assert String.ends_with?(tool_name, "search_issues")
+    assert_merge_safe_failed(result.failed)
+    assert_received {:register_tool, :fail_register, ^module}
+  end
+
   test "unsync resolves runtime-registered endpoint ids" do
     {:ok, endpoint} =
       Jido.MCP.Endpoint.new(:runtime, %{
@@ -247,6 +316,38 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert result_b.removed_count == 1
     assert result_b.retained_count == 0
     assert result_b.purged_count == 1
+  end
+
+  test "unsync reports unregister failures as merge-safe maps" do
+    tool = %{
+      "name" => "search_issues",
+      "description" => "Search issues",
+      "inputSchema" => %{"type" => "object", "properties" => %{}}
+    }
+
+    Mimic.stub(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok, %{data: %{"tools" => [tool]}}}
+    end)
+
+    assert {:ok, _} =
+             SyncToolsToAgent.run(
+               %{endpoint_id: :github, agent_server: :fail_unregister, replace_existing: true},
+               %{}
+             )
+
+    assert {:ok, result} =
+             UnsyncToolsFromAgent.run(
+               %{endpoint_id: :github, agent_server: :fail_unregister},
+               %{}
+             )
+
+    assert result.removed_count == 0
+    assert result.failed_count == 1
+    assert [%{tool_name: tool_name, module: module, reason: :unregister_failed}] = result.failed
+    assert is_atom(module)
+    assert String.ends_with?(tool_name, "search_issues")
+    assert_merge_safe_failed(result.failed)
+    assert_received {:unregister_tool, :fail_unregister, ^tool_name}
   end
 
   test "runtime endpoint registration does not auto-sync tools" do
@@ -372,5 +473,9 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
          %Jido.Agent.StateOp.SetPath{path: [:__strategy__], value: state}
        ]) do
     %{agent | state: Map.put(agent.state, :__strategy__, state)}
+  end
+
+  defp assert_merge_safe_failed(failed) do
+    assert %{failed: ^failed} = Jido.Agent.State.merge(%{failed: failed}, %{failed: failed})
   end
 end

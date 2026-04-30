@@ -13,8 +13,14 @@ defmodule Jido.MCP.Actions.UnregisterEndpoint do
 
   @impl true
   def run(params, _context) do
-    with {:ok, endpoint_id} <- Helpers.normalize_endpoint_id(params[:endpoint_id]) do
-      Jido.MCP.unregister_endpoint(endpoint_id)
+    with {:ok, endpoint_id} <- Helpers.normalize_endpoint_id(params[:endpoint_id]),
+         {:ok, _unregistered_endpoint} <- Jido.MCP.unregister_endpoint(endpoint_id) do
+      {:ok,
+       %{
+         status: :ok,
+         endpoint_id: endpoint_id,
+         registered: false
+       }}
     end
   end
 end
