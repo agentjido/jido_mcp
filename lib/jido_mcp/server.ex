@@ -16,7 +16,9 @@ defmodule Jido.MCP.Server do
       end
   """
 
-  @spec server_children(module(), keyword()) :: [Supervisor.child_spec()]
+  @type server_child :: module() | {module(), keyword()}
+
+  @spec server_children(module(), keyword()) :: [server_child()]
   def server_children(server_module, opts \\ []) when is_atom(server_module) and is_list(opts) do
     transport = Keyword.get(opts, :transport, :stdio)
     server_opts = Keyword.get(opts, :server_opts, [])

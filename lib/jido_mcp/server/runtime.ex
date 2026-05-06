@@ -56,11 +56,6 @@ defmodule Jido.MCP.Server.Runtime do
 
           {:error, reason, _directives} ->
             {:reply, Response.tool() |> Response.error(inspect(reason)), frame}
-
-          other ->
-            {:reply,
-             Response.tool() |> Response.error("Unexpected action result: #{inspect(other)}"),
-             frame}
         end
       else
         {:error, :not_found} ->
@@ -208,14 +203,11 @@ defmodule Jido.MCP.Server.Runtime do
   end
 
   defp tool_response(%{} = output), do: Response.tool() |> Response.structured(output)
-  defp tool_response(output) when is_list(output), do: Response.tool() |> Response.json(output)
-  defp tool_response(output) when is_binary(output), do: Response.tool() |> Response.text(output)
-  defp tool_response(output), do: Response.tool() |> Response.text(inspect(output))
 
   defp resource_response(%{} = output), do: Response.resource() |> Response.json(output)
 
   defp resource_response(output) when is_list(output),
-    do: Response.resource() |> Response.json(output)
+    do: Response.resource() |> Response.text(Jason.encode!(output))
 
   defp resource_response(output) when is_binary(output),
     do: Response.resource() |> Response.text(output)

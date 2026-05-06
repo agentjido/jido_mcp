@@ -55,16 +55,16 @@ defmodule Jido.MCP.Endpoint do
     end
   end
 
-  defp validate_transport({:stdio, opts}) when is_list(opts),
+  defp validate_transport({:stdio, opts}),
     do: validate_transport_opts(:stdio, opts)
 
-  defp validate_transport({:shell, opts}) when is_list(opts),
+  defp validate_transport({:shell, opts}),
     do: validate_transport_opts(:stdio, opts)
 
-  defp validate_transport({:sse, opts}) when is_list(opts),
+  defp validate_transport({:sse, opts}),
     do: validate_transport_opts(:sse, opts)
 
-  defp validate_transport({:streamable_http, opts}) when is_list(opts),
+  defp validate_transport({:streamable_http, opts}),
     do: validate_transport_opts(:streamable_http, opts)
 
   defp validate_transport(other),
