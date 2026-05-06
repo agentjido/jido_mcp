@@ -19,7 +19,6 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
     {modules, warnings, skipped} =
       Enum.reduce(tools, {[], %{}, []}, fn tool, {mods, warning_acc, skipped_acc} ->
         with name when is_binary(name) <- Map.get(tool, "name"),
-             module <- module_name(endpoint_id, name),
              local_name <- local_tool_name(prefix, name),
              description <- Map.get(tool, "description") || "MCP proxy tool #{name}",
              {:ok, compiled_schema} <-
@@ -27,6 +26,8 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
                  max_depth: max_schema_depth,
                  max_properties: max_schema_properties
                ) do
+          module = module_name(endpoint_id, local_name, name, description, compiled_schema)
+
           module =
             ensure_proxy_module(
               module,
@@ -117,13 +118,22 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
     created
   end
 
-  defp module_name(endpoint_id, remote_name) do
+  defp module_name(endpoint_id, local_name, remote_name, description, compiled_schema) do
     endpoint = endpoint_id |> Atom.to_string() |> Macro.camelize()
-    tool = remote_name |> sanitize_segment() |> Macro.camelize()
-    Module.concat([Jido, MCP, JidoAI, Proxy, endpoint, tool])
+    tool = local_name |> sanitize_segment() |> Macro.camelize()
+    hash = definition_hash(remote_name, local_name, description, compiled_schema)
+
+    Module.concat([Jido, MCP, JidoAI, Proxy, endpoint, "#{tool}#{hash}"])
   end
 
   defp local_tool_name(prefix, remote_name), do: prefix <> sanitize_segment(remote_name)
+
+  defp definition_hash(remote_name, local_name, description, compiled_schema) do
+    {remote_name, local_name, description, compiled_schema}
+    |> :erlang.phash2()
+    |> Integer.to_string(36)
+    |> String.upcase()
+  end
 
   defp sanitize_segment(value) do
     value

@@ -229,12 +229,12 @@ defmodule Jido.MCP.Transport.STDIO do
   end
 
   defp maybe_concat(opts, _key, nil), do: opts
-  defp maybe_concat(opts, key, value), do: Keyword.put(opts, key, value)
+  defp maybe_concat(opts, key, value), do: opts ++ [{key, value}]
 
   defp maybe_put_env(opts, nil), do: opts
 
   defp maybe_put_env(opts, %{} = env) do
-    Keyword.put(opts, :env, env_with_defaults(env) |> normalize_env_for_erlang())
+    opts ++ [{:env, env_with_defaults(env) |> normalize_env_for_erlang()}]
   end
 
   defp env_with_defaults(%{} = env), do: Map.merge(default_env(), env)

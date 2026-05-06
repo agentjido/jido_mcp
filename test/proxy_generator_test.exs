@@ -39,6 +39,36 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert message == "all object keys must be strings"
   end
 
+  test "uses distinct modules for different local proxy definitions" do
+    tools = [
+      %{
+        "name" => "search_issues",
+        "inputSchema" => %{
+          "type" => "object",
+          "properties" => %{}
+        }
+      }
+    ]
+
+    assert {:ok, [default_module], %{}, []} = ProxyGenerator.build_modules(:github, tools)
+
+    tools = [
+      %{
+        "name" => "search_issues",
+        "inputSchema" => %{
+          "type" => "object",
+          "required" => ["query"],
+          "properties" => %{"query" => %{"type" => "string"}}
+        }
+      }
+    ]
+
+    assert {:ok, [prefixed_module], %{}, []} =
+             ProxyGenerator.build_modules(:github, tools, prefix: "mcp_")
+
+    refute default_module == prefixed_module
+  end
+
   test "skips tools with unsupported schema constructs" do
     tools = [
       %{

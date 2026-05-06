@@ -244,10 +244,6 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
     else
       {:error, reason} ->
         {:error, reason}
-
-      :error ->
-        {:error,
-         error(:unsupported_schema_type, "unsupported schema type #{inspect(type)}", path)}
     end
   end
 

@@ -42,6 +42,8 @@ defmodule JidoMcp.MixProject do
       {:anubis_mcp, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.17"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:mimic, "~> 2.0", only: :test}
     ]
