@@ -1,7 +1,7 @@
 defmodule JidoMcp.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "1.0.0"
   @source_url "https://github.com/agentjido/jido_mcp"
   @description "MCP integration package for the Jido ecosystem"
 
@@ -38,10 +38,10 @@ defmodule JidoMcp.MixProject do
 
   defp deps do
     [
-      {:jido, "~> 2.0"},
+      {:jido, "~> 2.3"},
       {:anubis_mcp, "~> 1.1"},
       {:jason, "~> 1.4"},
-      {:zoi, "~> 0.17"},
+      {:zoi, "~> 0.18"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
