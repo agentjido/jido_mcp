@@ -1,5 +1,13 @@
 # Jido.MCP
 
+[![Hex.pm](https://img.shields.io/hexpm/v/jido_mcp.svg)](https://hex.pm/packages/jido_mcp)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/jido_mcp/)
+[![CI](https://github.com/agentjido/jido_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/agentjido/jido_mcp/actions/workflows/ci.yml)
+[![License](https://img.shields.io/hexpm/l/jido_mcp.svg)](https://github.com/agentjido/jido_mcp/blob/main/LICENSE)
+[![Website](https://img.shields.io/badge/website-jido.run-0f172a.svg)](https://jido.run)
+[![Ecosystem](https://img.shields.io/badge/ecosystem-jido.run-0ea5e9.svg)](https://jido.run/ecosystem)
+[![Discord](https://img.shields.io/badge/discord-join-5865F2.svg?logo=discord&logoColor=white)](https://jido.run/discord)
+
 `jido_mcp` integrates MCP servers into the Jido ecosystem using `anubis_mcp` directly.
 
 ## Features
