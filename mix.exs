@@ -40,6 +40,7 @@ defmodule JidoMcp.MixProject do
     [
       {:jido, "~> 2.3"},
       {:anubis_mcp, "~> 1.1"},
+      {:peri, "~> 0.8.5", override: true},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
