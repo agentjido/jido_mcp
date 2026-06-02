@@ -5,18 +5,20 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
   @type validation_error :: %{code: atom(), message: String.t(), path: [term()]}
 
   @unsupported_constructs ~w(
-    $ref oneOf anyOf allOf not if then else
+    $ref oneOf allOf not if then else
     patternProperties dependentSchemas dependencies
     unevaluatedProperties unevaluatedItems prefixItems contains
   )
 
   @common_schema_keys ~w(type description title default examples)
+  @any_of_schema_keys ~w(anyOf description title default examples)
   @object_schema_keys @common_schema_keys ++ ~w(properties required additionalProperties)
   @array_schema_keys @common_schema_keys ++ ~w(items minItems maxItems)
   @string_schema_keys @common_schema_keys ++ ~w(enum minLength maxLength)
   @integer_schema_keys @common_schema_keys ++ ~w(enum minimum maximum)
   @number_schema_keys @common_schema_keys ++ ~w(enum minimum maximum)
   @boolean_schema_keys @common_schema_keys ++ ~w(enum)
+  @null_schema_keys @common_schema_keys
 
   @default_max_depth 8
   @default_max_properties 200
@@ -72,6 +74,9 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
     cond do
       depth > max_depth ->
         {:error, error(:schema_too_deep, "tool schema depth exceeds #{max_depth}", path)}
+
+      Map.has_key?(schema, "anyOf") ->
+        compile_nullable_any_of(schema, path, depth, stats, max_depth, max_properties)
 
       true ->
         with :ok <- reject_unsupported_constructs(schema, path),
@@ -247,6 +252,63 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
     end
   end
 
+  defp compile_nullable_any_of(schema, path, depth, stats, max_depth, max_properties) do
+    with :ok <- reject_unknown_schema_keys(schema, @any_of_schema_keys, path),
+         {:ok, branch, branch_path} <- nullable_any_of_branch(schema, path),
+         {:ok, compiled_branch, final_stats} <-
+           compile_schema(branch, branch_path, depth + 1, stats, max_depth, max_properties) do
+      {:ok, %{kind: :nullable, schema: compiled_branch}, final_stats}
+    end
+  end
+
+  defp nullable_any_of_branch(schema, path) do
+    case Map.get(schema, "anyOf") do
+      [left, right] when is_map(left) and is_map(right) ->
+        pick_nullable_any_of_branch([left, right], path)
+
+      _ ->
+        {:error,
+         error(
+           :unsupported_schema,
+           "anyOf is only supported for nullable schemas with one null branch",
+           path
+         )}
+    end
+  end
+
+  defp pick_nullable_any_of_branch(branches, path) do
+    indexed = Enum.with_index(branches)
+    null_branches = Enum.filter(indexed, fn {branch, _idx} -> null_schema?(branch) end)
+    non_null_branches = Enum.reject(indexed, fn {branch, _idx} -> null_schema?(branch) end)
+
+    case {null_branches, non_null_branches} do
+      {[{null_branch, null_idx}], [{branch, branch_idx}]} ->
+        with :ok <-
+               reject_unknown_schema_keys(
+                 stringify_schema_keys(null_branch),
+                 @null_schema_keys,
+                 path ++ ["anyOf", null_idx]
+               ) do
+          {:ok, branch, path ++ ["anyOf", branch_idx]}
+        end
+
+      _ ->
+        {:error,
+         error(
+           :unsupported_schema,
+           "anyOf is only supported for nullable schemas with one null branch",
+           path
+         )}
+    end
+  end
+
+  defp null_schema?(schema) do
+    schema
+    |> stringify_schema_keys()
+    |> Map.get("type")
+    |> Kernel.==("null")
+  end
+
   defp validate_value(%{kind: :object} = schema, value, path) do
     cond do
       not is_map(value) or is_struct(value) ->
@@ -286,6 +348,12 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
           end
         end)
     end
+  end
+
+  defp validate_value(%{kind: :nullable}, nil, _path), do: :ok
+
+  defp validate_value(%{kind: :nullable, schema: schema}, value, path) do
+    validate_value(schema, value, path)
   end
 
   defp validate_value(%{kind: kind} = schema, value, path)

@@ -69,6 +69,35 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     refute default_module == prefixed_module
   end
 
+  test "builds proxy modules for FastMCP nullable anyOf fields" do
+    tools = [
+      %{
+        "name" => "get_metrics",
+        "inputSchema" => %{
+          "type" => "object",
+          "properties" => %{
+            "dataset_id" => %{
+              "anyOf" => [
+                %{"type" => "string"},
+                %{"type" => "null"}
+              ],
+              "default" => nil
+            }
+          }
+        }
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:data_gouv, tools, prefix: "mcp_")
+
+    Mimic.expect(Jido.MCP, :call_tool, fn :data_gouv, "get_metrics", %{"dataset_id" => nil} ->
+      {:ok, %{data: %{"ok" => true}}}
+    end)
+
+    assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"dataset_id" => nil}, %{})
+  end
+
   test "skips tools with unsupported schema constructs" do
     tools = [
       %{

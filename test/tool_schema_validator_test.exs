@@ -42,6 +42,74 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
     assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
   end
 
+  test "supports FastMCP nullable anyOf fields" do
+    schema = %{
+      "type" => "object",
+      "required" => ["dataset_id"],
+      "properties" => %{
+        "dataset_id" => %{
+          "anyOf" => [
+            %{"type" => "string", "minLength" => 1},
+            %{"type" => "null"}
+          ],
+          "default" => nil,
+          "description" => "Optional dataset id"
+        },
+        "page" => %{
+          "anyOf" => [
+            %{"type" => "null"},
+            %{"type" => "integer", "minimum" => 1}
+          ]
+        }
+      }
+    }
+
+    assert {:ok, compiled} = ToolSchemaValidator.compile(schema)
+
+    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => "abc", "page" => 2})
+    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => nil, "page" => nil})
+    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => "abc"})
+
+    assert {:error, %{code: :invalid_type, path: ["dataset_id"]}} =
+             ToolSchemaValidator.validate(compiled, %{"dataset_id" => 123})
+
+    assert {:error, %{code: :invalid_length, path: ["dataset_id"]}} =
+             ToolSchemaValidator.validate(compiled, %{"dataset_id" => ""})
+  end
+
+  test "keeps non-nullable anyOf unsupported" do
+    schema = %{
+      "type" => "object",
+      "properties" => %{
+        "value" => %{
+          "anyOf" => [
+            %{"type" => "string"},
+            %{"type" => "integer"}
+          ]
+        }
+      }
+    }
+
+    assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+  end
+
+  test "rejects nullable anyOf with validation siblings" do
+    schema = %{
+      "type" => "object",
+      "properties" => %{
+        "value" => %{
+          "anyOf" => [
+            %{"type" => "string"},
+            %{"type" => "null"}
+          ],
+          "enum" => ["a", nil]
+        }
+      }
+    }
+
+    assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+  end
+
   test "enforces schema limits for depth and property count" do
     deep_schema = %{
       "type" => "object",
