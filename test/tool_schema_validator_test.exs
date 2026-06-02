@@ -110,6 +110,27 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
     assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
   end
 
+  test "rejects malformed nullable anyOf shapes" do
+    malformed_any_of_values = [
+      [%{"type" => "string"}],
+      [%{"type" => "string"}, %{"type" => "null"}, %{"type" => "null"}],
+      [%{"type" => "null"}, %{"type" => "null"}],
+      [%{"type" => "string"}, %{"type" => "null", "enum" => [nil]}],
+      [%{"type" => "string"}, %URI{path: "/"}]
+    ]
+
+    for any_of <- malformed_any_of_values do
+      schema = %{
+        "type" => "object",
+        "properties" => %{
+          "value" => %{"anyOf" => any_of}
+        }
+      }
+
+      assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+    end
+  end
+
   test "enforces schema limits for depth and property count" do
     deep_schema = %{
       "type" => "object",

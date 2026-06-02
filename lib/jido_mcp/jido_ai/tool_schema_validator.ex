@@ -263,16 +263,15 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
 
   defp nullable_any_of_branch(schema, path) do
     case Map.get(schema, "anyOf") do
-      [left, right] when is_map(left) and is_map(right) ->
-        pick_nullable_any_of_branch([left, right], path)
+      [left, right] ->
+        if plain_schema_map?(left) and plain_schema_map?(right) do
+          pick_nullable_any_of_branch([left, right], path)
+        else
+          unsupported_nullable_any_of(path)
+        end
 
       _ ->
-        {:error,
-         error(
-           :unsupported_schema,
-           "anyOf is only supported for nullable schemas with one null branch",
-           path
-         )}
+        unsupported_nullable_any_of(path)
     end
   end
 
@@ -293,20 +292,26 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
         end
 
       _ ->
-        {:error,
-         error(
-           :unsupported_schema,
-           "anyOf is only supported for nullable schemas with one null branch",
-           path
-         )}
+        unsupported_nullable_any_of(path)
     end
   end
+
+  defp plain_schema_map?(value), do: is_map(value) and not is_struct(value)
 
   defp null_schema?(schema) do
     schema
     |> stringify_schema_keys()
     |> Map.get("type")
     |> Kernel.==("null")
+  end
+
+  defp unsupported_nullable_any_of(path) do
+    {:error,
+     error(
+       :unsupported_schema,
+       "anyOf is only supported for nullable schemas with one null branch",
+       path
+     )}
   end
 
   defp validate_value(%{kind: :object} = schema, value, path) do

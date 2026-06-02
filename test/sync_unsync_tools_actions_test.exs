@@ -119,6 +119,44 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
     assert_received {:register_tool, :agent_a, _module}
   end
 
+  test "sync registers FastMCP tools with nullable anyOf fields" do
+    Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :github ->
+      {:ok,
+       %{
+         data: %{
+           "tools" => [
+             %{
+               "name" => "get_metrics",
+               "description" => "Get dataset metrics",
+               "inputSchema" => %{
+                 "type" => "object",
+                 "properties" => %{
+                   "dataset_id" => %{
+                     "anyOf" => [
+                       %{"type" => "string"},
+                       %{"type" => "null"}
+                     ],
+                     "default" => nil
+                   }
+                 }
+               }
+             }
+           ]
+         }
+       }}
+    end)
+
+    assert {:ok, result} =
+             SyncToolsToAgent.run(%{endpoint_id: :github, agent_server: :agent_a}, %{})
+
+    assert result.discovered_count == 1
+    assert result.registered_count == 1
+    assert result.failed_count == 0
+    assert result.failed == []
+    assert length(ProxyRegistry.get(:agent_a, :github)) == 1
+    assert_received {:register_tool, :agent_a, _module}
+  end
+
   test "sync uses direct registration when an agent is present in action context" do
     Mimic.expect(Elixir.Jido.MCP, :list_tools, fn :github ->
       {:ok,
