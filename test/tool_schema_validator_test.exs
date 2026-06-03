@@ -31,6 +31,44 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
              ToolSchemaValidator.validate(compiled, %{query: "bug"})
   end
 
+  test "ignores root schema dialect metadata" do
+    schema = %{
+      "$schema" => "http://json-schema.org/draft-07/schema#",
+      "type" => "object",
+      "required" => ["url"],
+      "additionalProperties" => false,
+      "properties" => %{
+        "url" => %{"type" => "string", "minLength" => 1},
+        "response_format" => %{
+          "type" => "string",
+          "enum" => ["markdown", "json"],
+          "default" => "markdown"
+        }
+      }
+    }
+
+    assert {:ok, compiled} = ToolSchemaValidator.compile(schema)
+    assert :ok = ToolSchemaValidator.validate(compiled, %{"url" => "123"})
+
+    assert {:error, %{code: :invalid_length, path: ["url"]}} =
+             ToolSchemaValidator.validate(compiled, %{"url" => ""})
+  end
+
+  test "keeps nested schema dialect metadata unsupported" do
+    schema = %{
+      "type" => "object",
+      "properties" => %{
+        "url" => %{
+          "$schema" => "http://json-schema.org/draft-07/schema#",
+          "type" => "string"
+        }
+      }
+    }
+
+    assert {:error, %{code: :unsupported_schema, path: ["url"]}} =
+             ToolSchemaValidator.compile(schema)
+  end
+
   test "rejects unsupported schema constructs fail-closed" do
     schema = %{
       "type" => "object",
