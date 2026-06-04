@@ -45,6 +45,7 @@ defmodule JidoMcp.MixProject do
       {:peri, "~> 0.8.5"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
+      {:jsv, "~> 0.9"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},

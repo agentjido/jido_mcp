@@ -1,6 +1,7 @@
 defmodule Jido.MCP.JidoAI.ProxyGenerator do
   @moduledoc false
 
+  alias Jido.MCP.JidoAI.SchemaAdapter
   alias Jido.MCP.JidoAI.ToolSchemaValidator
 
   @spec build_modules(atom(), [map()], keyword()) ::
@@ -16,13 +17,20 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
     max_schema_depth = Keyword.get(opts, :max_schema_depth, 8)
     max_schema_properties = Keyword.get(opts, :max_schema_properties, 200)
 
+    adapter =
+      Keyword.get(
+        opts,
+        :schema_adapter,
+        SchemaAdapter.JSV
+      )
+
     {modules, warnings, skipped} =
       Enum.reduce(tools, {[], %{}, []}, fn tool, {mods, warning_acc, skipped_acc} ->
         with name when is_binary(name) <- Map.get(tool, "name"),
              local_name <- local_tool_name(prefix, name),
              description <- Map.get(tool, "description") || "MCP proxy tool #{name}",
              {:ok, compiled_schema} <-
-               ToolSchemaValidator.compile(Map.get(tool, "inputSchema"),
+               adapter.compile(Map.get(tool, "inputSchema"),
                  max_depth: max_schema_depth,
                  max_properties: max_schema_properties
                ) do
@@ -35,7 +43,8 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
               name,
               local_name,
               description,
-              compiled_schema
+              compiled_schema,
+              adapter
             )
 
           {[module | mods], warning_acc, skipped_acc}
@@ -62,7 +71,8 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          remote_name,
          local_name,
          description,
-         compiled_schema
+         compiled_schema,
+         adapter
        )
        when is_atom(module) do
     if Code.ensure_loaded?(module) do
@@ -74,7 +84,8 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         remote_name,
         local_name,
         description,
-        compiled_schema
+        compiled_schema,
+        adapter
       )
     end
   end
@@ -85,9 +96,11 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          remote_name,
          local_name,
          description,
-         compiled_schema
+         compiled_schema,
+         adapter
        ) do
     compiled_schema = Macro.escape(compiled_schema)
+    adapter = Macro.escape(adapter)
 
     quoted =
       quote location: :keep do
@@ -99,10 +112,11 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         @endpoint_id unquote(endpoint_id)
         @remote_tool_name unquote(remote_name)
         @compiled_input_schema unquote(compiled_schema)
+        @schema_adapter unquote(adapter)
 
         @impl true
         def run(params, _context) do
-          with :ok <- Jido.MCP.JidoAI.ToolSchemaValidator.validate(@compiled_input_schema, params),
+          with :ok <- @schema_adapter.validate(@compiled_input_schema, params),
                {:ok, %{data: data}} <- Jido.MCP.call_tool(@endpoint_id, @remote_tool_name, params) do
             {:ok, data}
           else

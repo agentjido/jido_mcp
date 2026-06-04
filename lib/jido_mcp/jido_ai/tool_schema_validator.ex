@@ -1,6 +1,8 @@
 defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
   @moduledoc false
 
+  @behaviour Jido.MCP.JidoAI.SchemaAdapter
+
   @type compiled_schema :: map()
   @type validation_error :: %{code: atom(), message: String.t(), path: [term()]}
 
