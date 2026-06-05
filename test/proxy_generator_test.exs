@@ -2,11 +2,12 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
   use ExUnit.Case, async: false
   use Mimic
 
+  alias Jido.MCP.JidoAI.ToolSchemaValidator
   alias Jido.MCP.JidoAI.ProxyGenerator
 
   setup :set_mimic_from_context
 
-  test "builds proxy module with strict runtime validation" do
+  test "builds proxy module with default JSON Schema validation and normalized params" do
     tools = [
       %{
         "name" => "search_issues",
@@ -27,11 +28,40 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert warnings == %{}
     assert skipped == []
 
-    Mimic.expect(Jido.MCP, :call_tool, fn :github, "search_issues", %{"query" => "bug"} ->
+    test_pid = self()
+
+    Mimic.stub(Jido.MCP, :call_tool, fn :github, "search_issues", %{"query" => query} ->
+      send(test_pid, {:called_search_issues, query})
       {:ok, %{data: %{"ok" => true}}}
     end)
 
     assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"query" => "bug"}, %{})
+    assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{query: "atom bug"}, %{})
+
+    assert_received {:called_search_issues, "bug"}
+    assert_received {:called_search_issues, "atom bug"}
+  end
+
+  test "supports strict schema adapter opt-in" do
+    tools = [
+      %{
+        "name" => "search_issues",
+        "description" => "Search issues",
+        "inputSchema" => %{
+          "type" => "object",
+          "required" => ["query"],
+          "properties" => %{
+            "query" => %{"type" => "string"}
+          }
+        }
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:github, tools,
+               prefix: "mcp_strict_",
+               schema_adapter: ToolSchemaValidator
+             )
 
     assert {:error, %Jido.Action.Error.ExecutionFailureError{message: message}} =
              Jido.Exec.run(proxy_module, %{query: "bug"}, %{})
@@ -129,7 +159,60 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"url" => "123"}, %{})
   end
 
-  test "skips tools with unsupported schema constructs" do
+  test "builds proxy modules for rich MCP JSON Schema constructs by default" do
+    tools = [
+      %{
+        "name" => "firecrawl_search",
+        "inputSchema" => %{
+          "type" => "object",
+          "required" => ["url", "limit"],
+          "properties" => %{
+            "url" => %{"type" => "string", "format" => "uri"},
+            "excludeDomains" => %{
+              "type" => "array",
+              "items" => %{"type" => "string", "pattern" => "^[a-z0-9.-]+$"}
+            },
+            "limit" => %{"type" => "integer", "exclusiveMinimum" => 0},
+            "jsonOptions" => %{
+              "type" => "object",
+              "properties" => %{
+                "schema" => %{
+                  "type" => "object",
+                  "propertyNames" => %{"type" => "string", "minLength" => 1}
+                }
+              }
+            }
+          }
+        }
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:firecrawl, tools, prefix: "mcp_")
+
+    Mimic.expect(Jido.MCP, :call_tool, fn :firecrawl,
+                                          "firecrawl_search",
+                                          %{
+                                            "url" => "https://example.com",
+                                            "limit" => 1,
+                                            "excludeDomains" => ["example.org"]
+                                          } ->
+      {:ok, %{data: %{"ok" => true}}}
+    end)
+
+    assert {:ok, %{"ok" => true}} =
+             Jido.Exec.run(
+               proxy_module,
+               %{
+                 url: "https://example.com",
+                 limit: 1,
+                 excludeDomains: ["example.org"]
+               },
+               %{}
+             )
+  end
+
+  test "strict schema adapter skips unsupported schema constructs" do
     tools = [
       %{
         "name" => "bad_tool",
@@ -140,7 +223,9 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
       }
     ]
 
-    assert {:ok, [], warnings, [skipped]} = ProxyGenerator.build_modules(:github, tools)
+    assert {:ok, [], warnings, [skipped]} =
+             ProxyGenerator.build_modules(:github, tools, schema_adapter: ToolSchemaValidator)
+
     assert skipped.tool_name == "bad_tool"
     assert is_list(warnings["bad_tool"])
   end

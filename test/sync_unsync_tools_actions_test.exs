@@ -234,7 +234,7 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
                "inputSchema" => %{
                  "type" => "object",
                  "properties" => %{
-                   "files" => %{"anyOf" => [%{"type" => "string"}]}
+                   "files" => %{"type" => "unsupported_type"}
                  }
                }
              }
