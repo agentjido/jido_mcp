@@ -2,7 +2,6 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
   @moduledoc false
 
   alias Jido.MCP.JidoAI.SchemaAdapter
-  alias Jido.MCP.JidoAI.ToolSchemaValidator
 
   @spec build_modules(atom(), [map()], keyword()) ::
           {:ok, [module()], %{term() => [String.t()]}, [map()]} | {:error, term()}

@@ -233,9 +233,10 @@ defmodule Jido.MCP.JidoAI.Actions.SyncUnsyncToolsActionsTest do
                "description" => "Run secret scanning",
                "inputSchema" => %{
                  "type" => "object",
-                 "properties" => %{
-                   "files" => %{"anyOf" => [%{"type" => "string"}]}
-                 }
+                 "properties" =>
+                   Map.new(1..201, fn index ->
+                     {"file_#{index}", %{"type" => "string"}}
+                   end)
                }
              }
            ]

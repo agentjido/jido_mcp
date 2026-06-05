@@ -36,7 +36,8 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:error, %Jido.Action.Error.ExecutionFailureError{message: message}} =
              Jido.Exec.run(proxy_module, %{query: "bug"}, %{})
 
-    assert message == "all object keys must be strings"
+    assert message =~ "required"
+    assert message =~ "query"
   end
 
   test "uses distinct modules for different local proxy definitions" do
@@ -129,18 +130,23 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"url" => "123"}, %{})
   end
 
-  test "skips tools with unsupported schema constructs" do
+  test "skips tools with oversized schemas" do
     tools = [
       %{
         "name" => "bad_tool",
         "inputSchema" => %{
           "type" => "object",
-          "oneOf" => [%{"type" => "object", "properties" => %{}}]
+          "properties" => %{
+            "one" => %{"type" => "string"},
+            "two" => %{"type" => "string"}
+          }
         }
       }
     ]
 
-    assert {:ok, [], warnings, [skipped]} = ProxyGenerator.build_modules(:github, tools)
+    assert {:ok, [], warnings, [skipped]} =
+             ProxyGenerator.build_modules(:github, tools, max_schema_properties: 1)
+
     assert skipped.tool_name == "bad_tool"
     assert is_list(warnings["bad_tool"])
   end
