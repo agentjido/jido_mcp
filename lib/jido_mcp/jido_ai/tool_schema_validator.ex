@@ -61,7 +61,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
     do: {:ok, %{"type" => "object", "properties" => %{}, "required" => []}}
 
   defp normalize_root_schema(schema) when is_map(schema) and not is_struct(schema) do
-    {:ok, stringify_schema_keys(schema)}
+    {:ok, schema |> stringify_schema_keys() |> Map.delete("$schema")}
   end
 
   defp normalize_root_schema(_schema) do

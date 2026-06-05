@@ -98,6 +98,37 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"dataset_id" => nil}, %{})
   end
 
+  test "builds proxy modules for tools with root schema dialect metadata" do
+    tools = [
+      %{
+        "name" => "tweetsave_get_tweet",
+        "inputSchema" => %{
+          "$schema" => "http://json-schema.org/draft-07/schema#",
+          "type" => "object",
+          "required" => ["url"],
+          "additionalProperties" => false,
+          "properties" => %{
+            "url" => %{"type" => "string", "minLength" => 1},
+            "response_format" => %{
+              "type" => "string",
+              "enum" => ["markdown", "json"],
+              "default" => "markdown"
+            }
+          }
+        }
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:tweetsave, tools, prefix: "mcp_")
+
+    Mimic.expect(Jido.MCP, :call_tool, fn :tweetsave, "tweetsave_get_tweet", %{"url" => "123"} ->
+      {:ok, %{data: %{"ok" => true}}}
+    end)
+
+    assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"url" => "123"}, %{})
+  end
+
   test "skips tools with unsupported schema constructs" do
     tools = [
       %{
