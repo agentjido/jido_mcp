@@ -91,48 +91,34 @@ defmodule Jido.MCP.SchemaAdapter.JSV do
 
         value
         |> Enum.reduce_while({:ok, stats}, fn
-          {"properties", properties}, {:ok, cur_stats} when is_map(properties) ->
-            property_count = map_size(properties)
-            next_stats = %{cur_stats | properties: cur_stats.properties + property_count}
-
-            if next_stats.properties > max_properties do
-              {:halt,
-               {:error,
-                error(
-                  :schema_too_large,
-                  "tool schema properties exceed #{max_properties}",
-                  path ++ ["properties"]
-                )}}
-            else
-              case walk_schema_map(
-                     properties,
-                     path ++ ["properties"],
-                     depth + 1,
-                     next_stats,
+          {key, children}, {:ok, cur_stats} when is_map(children) ->
+            if counted_schema_map_key?(key) do
+              case walk_counted_schema_map(
+                     key,
+                     children,
+                     path,
+                     depth,
+                     cur_stats,
                      max_depth,
                      max_properties
                    ) do
                 {:ok, final_stats} -> {:cont, {:ok, final_stats}}
                 {:error, reason} -> {:halt, {:error, reason}}
               end
+            else
+              walk_schema_container(
+                key,
+                children,
+                path,
+                depth,
+                cur_stats,
+                max_depth,
+                max_properties
+              )
             end
 
           {key, child}, {:ok, cur_stats} ->
-            if schema_container_key?(key) do
-              case walk_schema(
-                     child,
-                     path ++ [key],
-                     depth + 1,
-                     cur_stats,
-                     max_depth,
-                     max_properties
-                   ) do
-                {:ok, next_stats} -> {:cont, {:ok, next_stats}}
-                {:error, reason} -> {:halt, {:error, reason}}
-              end
-            else
-              {:cont, {:ok, cur_stats}}
-            end
+            walk_schema_container(key, child, path, depth, cur_stats, max_depth, max_properties)
         end)
     end
   end
@@ -150,6 +136,40 @@ defmodule Jido.MCP.SchemaAdapter.JSV do
 
   defp walk_schema(_value, _path, _depth, stats, _max_depth, _max_properties), do: {:ok, stats}
 
+  defp walk_counted_schema_map(key, children, path, depth, stats, max_depth, max_properties) do
+    child_count = map_size(children)
+    next_stats = %{stats | properties: stats.properties + child_count}
+
+    if next_stats.properties > max_properties do
+      {:error,
+       error(
+         :schema_too_large,
+         "tool schema entries exceed #{max_properties}",
+         path ++ [key]
+       )}
+    else
+      walk_schema_map(
+        children,
+        path ++ [key],
+        depth + 1,
+        next_stats,
+        max_depth,
+        max_properties
+      )
+    end
+  end
+
+  defp walk_schema_container(key, child, path, depth, stats, max_depth, max_properties) do
+    if schema_container_key?(key) do
+      case walk_schema(child, path ++ [key], depth + 1, stats, max_depth, max_properties) do
+        {:ok, next_stats} -> {:cont, {:ok, next_stats}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    else
+      {:cont, {:ok, stats}}
+    end
+  end
+
   defp walk_schema_map(map, path, depth, stats, max_depth, max_properties) do
     map
     |> Enum.reduce_while({:ok, stats}, fn {key, child}, {:ok, cur_stats} ->
@@ -166,6 +186,10 @@ defmodule Jido.MCP.SchemaAdapter.JSV do
       else if items not oneOf patternProperties prefixItems propertyNames then
       unevaluatedItems unevaluatedProperties $defs definitions
     )
+  end
+
+  defp counted_schema_map_key?(key) do
+    key in ~w(properties patternProperties dependentSchemas $defs definitions)
   end
 
   defp stringify_keys(map) when is_map(map) do

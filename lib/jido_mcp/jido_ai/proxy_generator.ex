@@ -15,59 +15,137 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
 
     max_schema_depth = Keyword.get(opts, :max_schema_depth, 8)
     max_schema_properties = Keyword.get(opts, :max_schema_properties, 200)
+
+    with {:ok, adapter} <- schema_adapter(opts) do
+      {modules, warnings, skipped} =
+        Enum.reduce(tools, {[], %{}, []}, fn tool, acc ->
+          build_tool_module(
+            endpoint_id,
+            tool,
+            prefix,
+            adapter,
+            max_schema_depth,
+            max_schema_properties,
+            acc
+          )
+        end)
+
+      {:ok, Enum.reverse(modules), warnings, Enum.reverse(skipped)}
+    end
+  end
+
+  defp schema_adapter(opts) do
     adapter = Keyword.get(opts, :schema_adapter, SchemaAdapter.JSV)
 
-    {modules, warnings, skipped} =
-      Enum.reduce(tools, {[], %{}, []}, fn tool, {mods, warning_acc, skipped_acc} ->
-        with name when is_binary(name) <- Map.get(tool, "name"),
-             local_name <- local_tool_name(prefix, name),
-             description <- Map.get(tool, "description") || "MCP proxy tool #{name}",
-             {:ok, compiled_schema} <-
-               adapter.compile(Map.get(tool, "inputSchema"),
-                 max_depth: max_schema_depth,
-                 max_properties: max_schema_properties
-               ) do
-          action_schema = action_schema(Map.get(tool, "inputSchema"))
+    with true <- is_atom(adapter),
+         {:module, ^adapter} <- Code.ensure_loaded(adapter),
+         true <- function_exported?(adapter, :compile, 2),
+         true <- function_exported?(adapter, :validate, 2) do
+      {:ok, adapter}
+    else
+      _ -> {:error, {:invalid_schema_adapter, adapter}}
+    end
+  end
 
-          module =
-            module_name(
-              endpoint_id,
-              local_name,
-              name,
-              description,
-              compiled_schema,
-              action_schema,
-              adapter
-            )
+  defp build_tool_module(
+         endpoint_id,
+         tool,
+         prefix,
+         adapter,
+         max_schema_depth,
+         max_schema_properties,
+         {mods, warning_acc, skipped_acc}
+       ) do
+    case Map.get(tool, "name") do
+      name when is_binary(name) ->
+        compile_tool_schema(
+          endpoint_id,
+          tool,
+          name,
+          prefix,
+          adapter,
+          max_schema_depth,
+          max_schema_properties,
+          {mods, warning_acc, skipped_acc}
+        )
 
-          module =
-            ensure_proxy_module(
-              module,
-              endpoint_id,
-              name,
-              local_name,
-              description,
-              compiled_schema,
-              action_schema,
-              adapter
-            )
+      _ ->
+        warning = "tool schema rejected: missing or invalid tool name"
+        skipped = %{tool_name: "<unnamed>", reason: warning}
+        {mods, Map.put(warning_acc, "<unnamed>", [warning]), [skipped | skipped_acc]}
+    end
+  end
 
-          {[module | mods], warning_acc, skipped_acc}
-        else
-          {:error, reason} ->
-            tool_name = Map.get(tool, "name", "<unnamed>")
-            warning = "tool schema rejected: #{inspect(reason)}"
-            skipped = %{tool_name: tool_name, reason: warning}
-            {mods, Map.put(warning_acc, tool_name, [warning]), [skipped | skipped_acc]}
+  defp compile_tool_schema(
+         endpoint_id,
+         tool,
+         name,
+         prefix,
+         adapter,
+         max_schema_depth,
+         max_schema_properties,
+         acc
+       ) do
+    case adapter.compile(Map.get(tool, "inputSchema"),
+           max_depth: max_schema_depth,
+           max_properties: max_schema_properties
+         ) do
+      {:ok, compiled_schema} ->
+        create_tool_module(endpoint_id, tool, name, prefix, adapter, compiled_schema, acc)
 
-          _ ->
-            warning = "tool schema rejected: missing or invalid tool name"
-            skipped = %{tool_name: "<unnamed>", reason: warning}
-            {mods, Map.put(warning_acc, "<unnamed>", [warning]), [skipped | skipped_acc]}
-        end
-      end)
+      {:error, reason} ->
+        skip_tool(name, "tool schema rejected: #{inspect(reason)}", acc)
 
-    {:ok, Enum.reverse(modules), warnings, Enum.reverse(skipped)}
+      other ->
+        skip_tool(
+          name,
+          "tool schema rejected: unexpected schema adapter response #{inspect(other)}",
+          acc
+        )
+    end
+  end
+
+  defp create_tool_module(
+         endpoint_id,
+         tool,
+         name,
+         prefix,
+         adapter,
+         compiled_schema,
+         {mods, warning_acc, skipped_acc}
+       ) do
+    local_name = local_tool_name(prefix, name)
+    description = Map.get(tool, "description") || "MCP proxy tool #{name}"
+    action_schema = action_schema(Map.get(tool, "inputSchema"))
+
+    module =
+      module_name(
+        endpoint_id,
+        local_name,
+        name,
+        description,
+        action_schema,
+        adapter
+      )
+
+    module =
+      ensure_proxy_module(
+        module,
+        endpoint_id,
+        name,
+        local_name,
+        description,
+        compiled_schema,
+        action_schema,
+        adapter
+      )
+
+    {[module | mods], warning_acc, skipped_acc}
+  end
+
+  defp skip_tool(tool_name, warning, {mods, warning_acc, skipped_acc}) do
+    skipped = %{tool_name: tool_name, reason: warning}
+    {mods, Map.put(warning_acc, tool_name, [warning]), [skipped | skipped_acc]}
   end
 
   defp ensure_proxy_module(
@@ -82,6 +160,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
        )
        when is_atom(module) do
     if Code.ensure_loaded?(module) do
+      put_compiled_schema(module, compiled_schema)
       module
     else
       create_proxy_module(
@@ -107,7 +186,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          action_schema,
          adapter
        ) do
-    compiled_schema = Macro.escape(compiled_schema)
+    compiled_schema_key = module |> put_compiled_schema(compiled_schema) |> Macro.escape()
     action_schema = Macro.escape(action_schema)
     adapter = Macro.escape(adapter)
 
@@ -120,7 +199,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
 
         @endpoint_id unquote(endpoint_id)
         @remote_tool_name unquote(remote_name)
-        @compiled_input_schema unquote(compiled_schema)
+        @compiled_input_schema_key unquote(compiled_schema_key)
         @schema_adapter unquote(adapter)
 
         @impl true
@@ -136,12 +215,16 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         end
 
         defp validate_input(params) do
-          case @schema_adapter.validate(@compiled_input_schema, params) do
+          case @schema_adapter.validate(compiled_input_schema(), params) do
             :ok -> {:ok, params}
             {:ok, validated_params} when is_map(validated_params) -> {:ok, validated_params}
             {:error, error} -> {:error, error}
             other -> {:error, {:unexpected_schema_adapter_response, other}}
           end
+        end
+
+        defp compiled_input_schema do
+          :persistent_term.get(@compiled_input_schema_key)
         end
       end
 
@@ -156,7 +239,6 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          local_name,
          remote_name,
          description,
-         compiled_schema,
          action_schema,
          adapter
        ) do
@@ -168,7 +250,6 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         remote_name,
         local_name,
         description,
-        compiled_schema,
         action_schema,
         adapter
       )
@@ -182,15 +263,23 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          remote_name,
          local_name,
          description,
-         compiled_schema,
          action_schema,
          adapter
        ) do
-    {remote_name, local_name, description, compiled_schema, action_schema, adapter}
-    |> :erlang.phash2()
-    |> Integer.to_string(36)
-    |> String.upcase()
+    {remote_name, local_name, description, action_schema, adapter}
+    |> :erlang.term_to_binary([:deterministic])
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :upper)
+    |> binary_part(0, 10)
   end
+
+  defp put_compiled_schema(module, compiled_schema) do
+    key = compiled_schema_key(module)
+    :persistent_term.put(key, compiled_schema)
+    key
+  end
+
+  defp compiled_schema_key(module), do: {__MODULE__, module, :compiled_input_schema}
 
   defp action_schema(nil), do: %{"type" => "object", "properties" => %{}}
 

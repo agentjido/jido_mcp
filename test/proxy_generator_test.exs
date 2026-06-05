@@ -7,6 +7,28 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
 
   setup :set_mimic_from_context
 
+  defmodule UnexpectedAdapter do
+    @behaviour Jido.MCP.SchemaAdapter
+
+    @impl true
+    def compile(_schema, _opts), do: :unexpected
+
+    @impl true
+    def validate(_compiled_schema, _params), do: :ok
+  end
+
+  defmodule ReferenceAdapter do
+    @behaviour Jido.MCP.SchemaAdapter
+
+    @impl true
+    def compile(_schema, _opts), do: {:ok, make_ref()}
+
+    @impl true
+    def validate(compiled_schema, params) when is_reference(compiled_schema) and is_map(params) do
+      {:ok, params}
+    end
+  end
+
   test "builds proxy module with default JSON Schema validation and normalized params" do
     input_schema = %{
       "type" => "object",
@@ -86,6 +108,45 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
              Jido.Exec.run(proxy_module, %{query: "bug"}, %{})
 
     assert message == "all object keys must be strings"
+  end
+
+  test "rejects invalid schema adapter modules before processing tools" do
+    assert {:error, {:invalid_schema_adapter, List}} =
+             ProxyGenerator.build_modules(:github, [], schema_adapter: List)
+  end
+
+  test "skips tools when schema adapter returns an unexpected compile response" do
+    tools = [
+      %{
+        "name" => "search_issues",
+        "inputSchema" => %{"type" => "object", "properties" => %{}}
+      }
+    ]
+
+    assert {:ok, [], warnings, [skipped]} =
+             ProxyGenerator.build_modules(:github, tools, schema_adapter: UnexpectedAdapter)
+
+    assert skipped.tool_name == "search_issues"
+    assert [warning] = warnings["search_issues"]
+    assert warning =~ "unexpected schema adapter response"
+  end
+
+  test "stores compiled schemas that cannot be embedded in generated module AST" do
+    tools = [
+      %{
+        "name" => "search_issues",
+        "inputSchema" => %{"type" => "object", "properties" => %{}}
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:github, tools, schema_adapter: ReferenceAdapter)
+
+    Mimic.expect(Jido.MCP, :call_tool, fn :github, "search_issues", %{"query" => "bug"} ->
+      {:ok, %{data: %{"ok" => true}}}
+    end)
+
+    assert {:ok, %{"ok" => true}} = Jido.Exec.run(proxy_module, %{"query" => "bug"}, %{})
   end
 
   test "uses distinct modules for different local proxy definitions" do

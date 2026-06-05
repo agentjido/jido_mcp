@@ -42,6 +42,57 @@ defmodule Jido.MCP.SchemaAdapter.JSVTest do
     assert {:error, %{code: :schema_too_large}} = JSV.compile(wide_schema, max_properties: 2)
   end
 
+  test "counts schema maps beyond properties before compiling" do
+    for key <- ~w($defs definitions patternProperties dependentSchemas) do
+      schema = %{
+        "type" => "object",
+        key => %{
+          "one" => %{"type" => "string"},
+          "two" => %{"type" => "integer"}
+        }
+      }
+
+      assert {:error, %{code: :schema_too_large, path: [^key]}} =
+               JSV.compile(schema, max_properties: 1)
+    end
+  end
+
+  test "enforces depth limits inside schema maps beyond properties" do
+    schema = %{
+      "type" => "object",
+      "$defs" => %{
+        "item" => %{
+          "type" => "object",
+          "properties" => %{
+            "value" => %{"type" => "string"}
+          }
+        }
+      }
+    }
+
+    assert {:error, %{code: :schema_too_deep, path: ["$defs", "item", "properties", "value"]}} =
+             JSV.compile(schema, max_depth: 2)
+  end
+
+  test "supports local JSON Schema definitions used by MCP tools" do
+    schema = %{
+      "type" => "object",
+      "required" => ["item"],
+      "properties" => %{
+        "item" => %{"$ref" => "#/$defs/item"}
+      },
+      "$defs" => %{
+        "item" => %{"type" => "integer", "minimum" => 1}
+      }
+    }
+
+    assert {:ok, compiled} = JSV.compile(schema, [])
+    assert {:ok, %{"item" => 2}} = JSV.validate(compiled, %{item: 2})
+
+    assert {:error, %{code: :invalid_arguments, path: ["item"]}} =
+             JSV.validate(compiled, %{"item" => 0})
+  end
+
   test "validates rich MCP JSON Schema and returns string-keyed params" do
     schema = %{
       "type" => "object",

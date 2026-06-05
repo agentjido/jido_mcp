@@ -27,7 +27,7 @@ defmodule JidoMcp.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :crypto],
       env: [
         version: @version,
         jido_ai_sync: [max_tools_per_sync: 100, max_proxy_modules_per_endpoint: 200]
