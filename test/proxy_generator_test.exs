@@ -8,17 +8,19 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
   setup :set_mimic_from_context
 
   test "builds proxy module with default JSON Schema validation and normalized params" do
+    input_schema = %{
+      "type" => "object",
+      "required" => ["query"],
+      "properties" => %{
+        "query" => %{"type" => "string"}
+      }
+    }
+
     tools = [
       %{
         "name" => "search_issues",
         "description" => "Search issues",
-        "inputSchema" => %{
-          "type" => "object",
-          "required" => ["query"],
-          "properties" => %{
-            "query" => %{"type" => "string"}
-          }
-        }
+        "inputSchema" => input_schema
       }
     ]
 
@@ -27,6 +29,8 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
 
     assert warnings == %{}
     assert skipped == []
+    assert proxy_module.schema() == input_schema
+    assert Jido.Action.Schema.schema_type(proxy_module.schema()) == :json_schema
 
     test_pid = self()
 
@@ -40,6 +44,21 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
 
     assert_received {:called_search_issues, "bug"}
     assert_received {:called_search_issues, "atom bug"}
+  end
+
+  test "uses an empty JSON Schema action schema when MCP inputSchema is omitted" do
+    tools = [
+      %{
+        "name" => "ping",
+        "description" => "Ping"
+      }
+    ]
+
+    assert {:ok, [proxy_module], %{}, []} =
+             ProxyGenerator.build_modules(:github, tools, prefix: "mcp_")
+
+    assert proxy_module.schema() == %{"type" => "object", "properties" => %{}}
+    assert Jido.Action.Schema.schema_type(proxy_module.schema()) == :json_schema
   end
 
   test "supports strict schema adapter opt-in" do
@@ -160,35 +179,39 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
   end
 
   test "builds proxy modules for rich MCP JSON Schema constructs by default" do
-    tools = [
-      %{
-        "name" => "firecrawl_search",
-        "inputSchema" => %{
+    input_schema = %{
+      "type" => "object",
+      "required" => ["url", "limit"],
+      "properties" => %{
+        "url" => %{"type" => "string", "format" => "uri"},
+        "excludeDomains" => %{
+          "type" => "array",
+          "items" => %{"type" => "string", "pattern" => "^[a-z0-9.-]+$"}
+        },
+        "limit" => %{"type" => "integer", "exclusiveMinimum" => 0},
+        "jsonOptions" => %{
           "type" => "object",
-          "required" => ["url", "limit"],
           "properties" => %{
-            "url" => %{"type" => "string", "format" => "uri"},
-            "excludeDomains" => %{
-              "type" => "array",
-              "items" => %{"type" => "string", "pattern" => "^[a-z0-9.-]+$"}
-            },
-            "limit" => %{"type" => "integer", "exclusiveMinimum" => 0},
-            "jsonOptions" => %{
+            "schema" => %{
               "type" => "object",
-              "properties" => %{
-                "schema" => %{
-                  "type" => "object",
-                  "propertyNames" => %{"type" => "string", "minLength" => 1}
-                }
-              }
+              "propertyNames" => %{"type" => "string", "minLength" => 1}
             }
           }
         }
+      }
+    }
+
+    tools = [
+      %{
+        "name" => "firecrawl_search",
+        "inputSchema" => input_schema
       }
     ]
 
     assert {:ok, [proxy_module], %{}, []} =
              ProxyGenerator.build_modules(:firecrawl, tools, prefix: "mcp_")
+
+    assert proxy_module.schema() == input_schema
 
     Mimic.expect(Jido.MCP, :call_tool, fn :firecrawl,
                                           "firecrawl_search",

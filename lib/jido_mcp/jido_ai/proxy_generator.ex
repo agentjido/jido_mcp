@@ -27,8 +27,18 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
                  max_depth: max_schema_depth,
                  max_properties: max_schema_properties
                ) do
+          action_schema = action_schema(Map.get(tool, "inputSchema"))
+
           module =
-            module_name(endpoint_id, local_name, name, description, compiled_schema, adapter)
+            module_name(
+              endpoint_id,
+              local_name,
+              name,
+              description,
+              compiled_schema,
+              action_schema,
+              adapter
+            )
 
           module =
             ensure_proxy_module(
@@ -38,6 +48,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
               local_name,
               description,
               compiled_schema,
+              action_schema,
               adapter
             )
 
@@ -66,6 +77,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          local_name,
          description,
          compiled_schema,
+         action_schema,
          adapter
        )
        when is_atom(module) do
@@ -79,6 +91,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         local_name,
         description,
         compiled_schema,
+        action_schema,
         adapter
       )
     end
@@ -91,9 +104,11 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
          local_name,
          description,
          compiled_schema,
+         action_schema,
          adapter
        ) do
     compiled_schema = Macro.escape(compiled_schema)
+    action_schema = Macro.escape(action_schema)
     adapter = Macro.escape(adapter)
 
     quoted =
@@ -101,7 +116,7 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
         use Jido.Action,
           name: unquote(local_name),
           description: unquote(description),
-          schema: Zoi.map()
+          schema: unquote(action_schema)
 
         @endpoint_id unquote(endpoint_id)
         @remote_tool_name unquote(remote_name)
@@ -136,22 +151,67 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
     created
   end
 
-  defp module_name(endpoint_id, local_name, remote_name, description, compiled_schema, adapter) do
+  defp module_name(
+         endpoint_id,
+         local_name,
+         remote_name,
+         description,
+         compiled_schema,
+         action_schema,
+         adapter
+       ) do
     endpoint = endpoint_id |> Atom.to_string() |> Macro.camelize()
     tool = local_name |> sanitize_segment() |> Macro.camelize()
-    hash = definition_hash(remote_name, local_name, description, compiled_schema, adapter)
+
+    hash =
+      definition_hash(
+        remote_name,
+        local_name,
+        description,
+        compiled_schema,
+        action_schema,
+        adapter
+      )
 
     Module.concat([Jido, MCP, JidoAI, Proxy, endpoint, "#{tool}#{hash}"])
   end
 
   defp local_tool_name(prefix, remote_name), do: prefix <> sanitize_segment(remote_name)
 
-  defp definition_hash(remote_name, local_name, description, compiled_schema, adapter) do
-    {remote_name, local_name, description, compiled_schema, adapter}
+  defp definition_hash(
+         remote_name,
+         local_name,
+         description,
+         compiled_schema,
+         action_schema,
+         adapter
+       ) do
+    {remote_name, local_name, description, compiled_schema, action_schema, adapter}
     |> :erlang.phash2()
     |> Integer.to_string(36)
     |> String.upcase()
   end
+
+  defp action_schema(nil), do: %{"type" => "object", "properties" => %{}}
+
+  defp action_schema(%{} = schema) do
+    schema
+    |> stringify_schema_keys()
+    |> Map.put_new("properties", %{})
+  end
+
+  defp stringify_schema_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {Atom.to_string(key), stringify_schema_keys(value)}
+      {key, value} when is_binary(key) -> {key, stringify_schema_keys(value)}
+      {key, value} -> {to_string(key), stringify_schema_keys(value)}
+    end)
+  end
+
+  defp stringify_schema_keys(list) when is_list(list),
+    do: Enum.map(list, &stringify_schema_keys/1)
+
+  defp stringify_schema_keys(value), do: value
 
   defp sanitize_segment(value) do
     value
