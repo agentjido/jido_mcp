@@ -27,7 +27,7 @@ defmodule JidoMcp.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :crypto],
       env: [
         version: @version,
         jido_ai_sync: [max_tools_per_sync: 100, max_proxy_modules_per_endpoint: 200]
@@ -45,6 +45,7 @@ defmodule JidoMcp.MixProject do
       {:peri, "~> 0.8.5"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
+      {:jsv, "~> 0.19"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},

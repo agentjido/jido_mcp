@@ -1,5 +1,7 @@
-defmodule Jido.MCP.JidoAI.ToolSchemaValidator do
+defmodule Jido.MCP.SchemaAdapter.StrictSubset do
   @moduledoc false
+
+  @behaviour Jido.MCP.SchemaAdapter
 
   @type compiled_schema :: map()
   @type validation_error :: %{code: atom(), message: String.t(), path: [term()]}
