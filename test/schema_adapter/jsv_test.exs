@@ -1,7 +1,7 @@
-defmodule Jido.MCP.JidoAI.SchemaAdapter.JSVTest do
+defmodule Jido.MCP.SchemaAdapter.JSVTest do
   use ExUnit.Case, async: true
 
-  alias Jido.MCP.JidoAI.SchemaAdapter.JSV
+  alias Jido.MCP.SchemaAdapter.JSV
 
   test "compiles nil as an empty object schema" do
     assert {:ok, compiled} = JSV.compile(nil, [])

@@ -1,4 +1,4 @@
-defmodule Jido.MCP.JidoAI.SchemaAdapter do
+defmodule Jido.MCP.SchemaAdapter do
   @moduledoc false
 
   @type compiled_schema :: term()

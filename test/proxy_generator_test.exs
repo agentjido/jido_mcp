@@ -2,7 +2,7 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Jido.MCP.JidoAI.ToolSchemaValidator
+  alias Jido.MCP.SchemaAdapter.StrictSubset
   alias Jido.MCP.JidoAI.ProxyGenerator
 
   setup :set_mimic_from_context
@@ -79,7 +79,7 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     assert {:ok, [proxy_module], %{}, []} =
              ProxyGenerator.build_modules(:github, tools,
                prefix: "mcp_strict_",
-               schema_adapter: ToolSchemaValidator
+               schema_adapter: StrictSubset
              )
 
     assert {:error, %Jido.Action.Error.ExecutionFailureError{message: message}} =
@@ -247,7 +247,7 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
     ]
 
     assert {:ok, [], warnings, [skipped]} =
-             ProxyGenerator.build_modules(:github, tools, schema_adapter: ToolSchemaValidator)
+             ProxyGenerator.build_modules(:github, tools, schema_adapter: StrictSubset)
 
     assert skipped.tool_name == "bad_tool"
     assert is_list(warnings["bad_tool"])

@@ -1,7 +1,7 @@
-defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
+defmodule Jido.MCP.SchemaAdapter.StrictSubsetTest do
   use ExUnit.Case, async: true
 
-  alias Jido.MCP.JidoAI.ToolSchemaValidator
+  alias Jido.MCP.SchemaAdapter.StrictSubset
 
   test "compiles and validates supported object schema subset" do
     schema = %{
@@ -24,11 +24,11 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       }
     }
 
-    assert {:ok, compiled} = ToolSchemaValidator.compile(schema)
-    assert :ok = ToolSchemaValidator.validate(compiled, %{"query" => "bug", "page" => 2})
+    assert {:ok, compiled} = StrictSubset.compile(schema)
+    assert :ok = StrictSubset.validate(compiled, %{"query" => "bug", "page" => 2})
 
     assert {:error, %{code: :invalid_key_type}} =
-             ToolSchemaValidator.validate(compiled, %{query: "bug"})
+             StrictSubset.validate(compiled, %{query: "bug"})
   end
 
   test "ignores root schema dialect metadata" do
@@ -47,11 +47,11 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       }
     }
 
-    assert {:ok, compiled} = ToolSchemaValidator.compile(schema)
-    assert :ok = ToolSchemaValidator.validate(compiled, %{"url" => "123"})
+    assert {:ok, compiled} = StrictSubset.compile(schema)
+    assert :ok = StrictSubset.validate(compiled, %{"url" => "123"})
 
     assert {:error, %{code: :invalid_length, path: ["url"]}} =
-             ToolSchemaValidator.validate(compiled, %{"url" => ""})
+             StrictSubset.validate(compiled, %{"url" => ""})
   end
 
   test "keeps nested schema dialect metadata unsupported" do
@@ -66,7 +66,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
     }
 
     assert {:error, %{code: :unsupported_schema, path: ["url"]}} =
-             ToolSchemaValidator.compile(schema)
+             StrictSubset.compile(schema)
   end
 
   test "rejects unsupported schema constructs fail-closed" do
@@ -77,7 +77,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       ]
     }
 
-    assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+    assert {:error, %{code: :unsupported_schema}} = StrictSubset.compile(schema)
   end
 
   test "supports FastMCP nullable anyOf fields" do
@@ -102,17 +102,17 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       }
     }
 
-    assert {:ok, compiled} = ToolSchemaValidator.compile(schema)
+    assert {:ok, compiled} = StrictSubset.compile(schema)
 
-    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => "abc", "page" => 2})
-    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => nil, "page" => nil})
-    assert :ok = ToolSchemaValidator.validate(compiled, %{"dataset_id" => "abc"})
+    assert :ok = StrictSubset.validate(compiled, %{"dataset_id" => "abc", "page" => 2})
+    assert :ok = StrictSubset.validate(compiled, %{"dataset_id" => nil, "page" => nil})
+    assert :ok = StrictSubset.validate(compiled, %{"dataset_id" => "abc"})
 
     assert {:error, %{code: :invalid_type, path: ["dataset_id"]}} =
-             ToolSchemaValidator.validate(compiled, %{"dataset_id" => 123})
+             StrictSubset.validate(compiled, %{"dataset_id" => 123})
 
     assert {:error, %{code: :invalid_length, path: ["dataset_id"]}} =
-             ToolSchemaValidator.validate(compiled, %{"dataset_id" => ""})
+             StrictSubset.validate(compiled, %{"dataset_id" => ""})
   end
 
   test "keeps non-nullable anyOf unsupported" do
@@ -128,7 +128,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       }
     }
 
-    assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+    assert {:error, %{code: :unsupported_schema}} = StrictSubset.compile(schema)
   end
 
   test "rejects nullable anyOf with validation siblings" do
@@ -145,7 +145,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
       }
     }
 
-    assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+    assert {:error, %{code: :unsupported_schema}} = StrictSubset.compile(schema)
   end
 
   test "rejects malformed nullable anyOf shapes" do
@@ -165,7 +165,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
         }
       }
 
-      assert {:error, %{code: :unsupported_schema}} = ToolSchemaValidator.compile(schema)
+      assert {:error, %{code: :unsupported_schema}} = StrictSubset.compile(schema)
     end
   end
 
@@ -188,7 +188,7 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
     }
 
     assert {:error, %{code: :schema_too_deep}} =
-             ToolSchemaValidator.compile(deep_schema, max_depth: 2)
+             StrictSubset.compile(deep_schema, max_depth: 2)
 
     wide_schema = %{
       "type" => "object",
@@ -200,6 +200,6 @@ defmodule Jido.MCP.JidoAI.ToolSchemaValidatorTest do
     }
 
     assert {:error, %{code: :schema_too_large}} =
-             ToolSchemaValidator.compile(wide_schema, max_properties: 2)
+             StrictSubset.compile(wide_schema, max_properties: 2)
   end
 end

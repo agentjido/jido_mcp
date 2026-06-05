@@ -1,7 +1,7 @@
-defmodule Jido.MCP.JidoAI.SchemaAdapter.JSV do
+defmodule Jido.MCP.SchemaAdapter.JSV do
   @moduledoc false
 
-  @behaviour Jido.MCP.JidoAI.SchemaAdapter
+  @behaviour Jido.MCP.SchemaAdapter
 
   @default_schema "https://json-schema.org/draft/2020-12/schema"
   @default_max_depth 8
