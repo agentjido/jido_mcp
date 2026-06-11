@@ -83,7 +83,8 @@ defmodule Jido.MCP.Server do
     capabilities = if resources != [], do: capabilities ++ [:resources], else: capabilities
     capabilities = if prompts != [], do: capabilities ++ [:prompts], else: capabilities
 
-    quote bind_quoted: [
+    quote generated: true,
+          bind_quoted: [
             name: name,
             version: version,
             tools: tools,
