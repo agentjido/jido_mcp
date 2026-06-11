@@ -234,13 +234,13 @@ defmodule Jido.MCP.Server.Runtime do
   defp normalize_prompt_message(content) when is_binary(content), do: {"user", content}
   defp normalize_prompt_message(other), do: {"user", inspect(other)}
 
-  defp build_action_context(%Frame{} = frame) do
+  defp build_action_context(%Frame{assigns: assigns, context: context} = frame) do
     %{
       mcp_frame: frame,
-      mcp_context: Map.get(frame, :context),
-      transport: Map.get(frame, :transport, %{}),
-      request: Map.get(frame, :request),
-      assigns: Map.get(frame, :assigns, %{})
+      mcp_context: context,
+      transport: %{},
+      request: nil,
+      assigns: assigns
     }
   end
 

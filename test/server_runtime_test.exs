@@ -1,6 +1,7 @@
 defmodule Jido.MCP.Server.RuntimeTest do
   use ExUnit.Case, async: true
 
+  alias Anubis.Server.Context
   alias Anubis.Server.Frame
   alias Jido.MCP.Server.Runtime
 
@@ -14,6 +15,24 @@ defmodule Jido.MCP.Server.RuntimeTest do
 
     @impl true
     def run(%{a: a, b: b}, _context), do: {:ok, %{sum: a + b}}
+  end
+
+  defmodule ContextAction do
+    use Jido.Action,
+      name: "context",
+      schema: []
+
+    @impl true
+    def run(_params, context) do
+      {:ok,
+       %{
+         assigns: context.assigns,
+         frame_assigns: context.mcp_frame.assigns,
+         session_id: context.mcp_context.session_id,
+         request_is_nil: is_nil(context.request),
+         transport: context.transport
+       }}
+    end
   end
 
   defmodule EchoResource do
@@ -103,6 +122,21 @@ defmodule Jido.MCP.Server.RuntimeTest do
 
     assert response.type == :tool
     assert response.structured_content == %{sum: 7}
+  end
+
+  test "builds action context from supported frame fields" do
+    frame = %{Frame.new(%{tenant: "zaq"}) | context: %Context{session_id: "session-123"}}
+
+    assert {:reply, response, _frame} =
+             Runtime.handle_tool_call([ContextAction], "context", %{}, frame, AllowAllServer)
+
+    assert response.structured_content == %{
+             assigns: %{tenant: "zaq"},
+             frame_assigns: %{tenant: "zaq"},
+             session_id: "session-123",
+             request_is_nil: true,
+             transport: %{}
+           }
   end
 
   test "handles resource read" do
