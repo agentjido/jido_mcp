@@ -27,3 +27,28 @@ All notable changes to this project will be documented in this file.
 - Switched `jido` from a local path dependency to Hex (`~> 2.0`) so the package can be published on Hex.
 - Updated release metadata in `mix.exs` (package files, maintainers, docs links, and release check alias).
 - Updated `ex_doc` development dependency to `~> 0.40`.
+
+<!-- changelog -->
+
+## [v1.1.0](https://github.com/agentjido/jido_mcp/compare/v1.0.0...v1.1.0) (2026-06-11)
+
+
+
+
+### Features:
+
+* harden MCP JSON Schema support by mikehostetler
+
+### Bug Fixes:
+
+* bump anubis_mcp to 1.6.2 (#31) by mikehostetler
+
+* clean Elixir 1.20 compile warnings by mikehostetler
+
+* accept root schema metadata for MCP tools (#22) by Julien
+
+* stabilize dependency baseline by mikehostetler
+
+* support nullable anyOf tool schemas by mikehostetler
+
+* consume Peri nil-content fix by mikehostetler
