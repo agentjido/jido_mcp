@@ -39,9 +39,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      # Temporary until anubis_mcp releases Peri 0.8.5 support.
-      {:anubis_mcp,
-       github: "zoedsoupe/anubis-mcp", ref: "e3f35a3bb0372fecd7ab21cdb43acc08fae96949"},
+      {:anubis_mcp, "~> 1.6.2"},
       {:peri, "~> 0.8.5"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
