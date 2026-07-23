@@ -33,7 +33,11 @@ defmodule Jido.MCP.EndpointTest do
              })
 
     assert sse_endpoint.transport ==
-             {:sse, [server: [base_url: "http://localhost:3000", sse_path: "/sse"]]}
+             {:sse,
+              [
+                finch_name: Jido.MCP.Finch,
+                server: [base_url: "http://localhost:3000", sse_path: "/sse"]
+              ]}
 
     assert sse_endpoint.protocol_version == "2024-11-05"
 
@@ -47,7 +51,35 @@ defmodule Jido.MCP.EndpointTest do
 
     assert http_endpoint.transport ==
              {:streamable_http,
-              [base_url: "http://localhost:3000", mcp_path: "/mcp", enable_sse: true]}
+              [
+                finch_name: Jido.MCP.Finch,
+                base_url: "http://localhost:3000",
+                mcp_path: "/mcp",
+                enable_sse: true
+              ]}
+  end
+
+  test "uses the managed Finch pool by default and preserves a caller pool" do
+    for transport <- [:sse, :streamable_http] do
+      assert {:ok, default_endpoint} =
+               Endpoint.new(transport, %{
+                 transport: {transport, [base_url: "http://localhost:3000"]},
+                 client_info: %{name: "my_app"}
+               })
+
+      assert {^transport, default_opts} = default_endpoint.transport
+      assert default_opts[:finch_name] == Jido.MCP.Finch
+
+      assert {:ok, caller_endpoint} =
+               Endpoint.new(transport, %{
+                 transport:
+                   {transport, [base_url: "http://localhost:3000", finch_name: MyApp.MCPFinch]},
+                 client_info: %{name: "my_app"}
+               })
+
+      assert {^transport, caller_opts} = caller_endpoint.transport
+      assert caller_opts[:finch_name] == MyApp.MCPFinch
+    end
   end
 
   test "normalizes streamable HTTP URL options for Anubis 1.1" do

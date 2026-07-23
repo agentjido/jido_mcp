@@ -6,6 +6,7 @@ defmodule Jido.MCP.Endpoint do
   @default_protocol_version "2025-06-18"
   @legacy_sse_protocol_version "2024-11-05"
   @default_request_timeout_ms 30_000
+  @default_finch_name Jido.MCP.Finch
 
   @type id :: atom()
   @type transport :: {:stdio, keyword()} | {:sse, keyword()} | {:streamable_http, keyword()}
@@ -89,20 +90,24 @@ defmodule Jido.MCP.Endpoint do
     opts
     |> normalize_streamable_http_url()
     |> normalize_streamable_http_base_url()
+    |> Keyword.put_new(:finch_name, @default_finch_name)
   end
 
   defp normalize_transport_opts(:sse, opts) do
-    if Keyword.has_key?(opts, :server) do
-      opts
-    else
-      {server_opts, transport_opts} = Keyword.split(opts, [:base_url, :base_path, :sse_path])
-
-      if server_opts == [] do
+    opts =
+      if Keyword.has_key?(opts, :server) do
         opts
       else
-        Keyword.put(transport_opts, :server, server_opts)
+        {server_opts, transport_opts} = Keyword.split(opts, [:base_url, :base_path, :sse_path])
+
+        if server_opts == [] do
+          opts
+        else
+          Keyword.put(transport_opts, :server, server_opts)
+        end
       end
-    end
+
+    Keyword.put_new(opts, :finch_name, @default_finch_name)
   end
 
   defp normalize_transport_opts(_layer, opts), do: opts
