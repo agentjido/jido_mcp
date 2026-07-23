@@ -6,6 +6,7 @@ defmodule Jido.MCP.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Finch, name: Jido.MCP.Finch},
       {Registry, keys: :unique, name: Jido.MCP.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Jido.MCP.ClientSupervisor},
       Jido.MCP.ClientPool,

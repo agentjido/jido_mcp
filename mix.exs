@@ -39,8 +39,9 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:anubis_mcp, "~> 1.6.2"},
-      {:peri, "~> 0.8.5"},
+      {:anubis_mcp, "~> 1.10"},
+      {:finch, "~> 0.19"},
+      {:peri, "~> 0.9"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},
