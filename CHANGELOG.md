@@ -30,6 +30,15 @@ All notable changes to this project will be documented in this file.
 
 <!-- changelog -->
 
+## [v1.1.1](https://github.com/agentjido/jido_mcp/compare/v1.1.0...v1.1.1) (2026-08-10)
+
+
+
+
+### Bug Fixes:
+
+* deps: update Mint for CVE-2026-59249 by mikehostetler
+
 ## [v1.1.0](https://github.com/agentjido/jido_mcp/compare/v1.0.0...v1.1.0) (2026-06-11)
 
 
