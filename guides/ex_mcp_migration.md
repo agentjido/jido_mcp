@@ -148,11 +148,19 @@ changes the documented server plug, callback context type, raw response type,
 and legacy HTTP+SSE support. A major release is the safe semantic-versioning
 choice unless all downstream users confirm that they do not use these paths.
 
+ExMCP currently brings `cowlib 2.19.0`, which is the newest compatible release.
+This package acknowledges only `EEF-CVE-2026-43966` and
+`EEF-CVE-2026-43969`. Plug and Cowboy reject the affected response header
+bytes, and ExMCP does not import the affected cookie encoder. The security
+tests lock these controls. `mix hex.audit` continues to fail for each new
+advisory. Remove the acknowledgements by 2026-09-12 or when a fixed `cowlib`
+release is available.
+
 Before release:
 
 - run the `jido_connect_mcp` and host integration suites;
 - replace the ExMCP release candidate with stable 1.0 when it is available;
-- accept or fix the active `cowlib` advisories for the target deployments;
+- review the temporary `cowlib` advisory controls for the target deployments;
 - test any server that checks the legacy client identity;
 - complete a production soak for client, session, cancellation, and subprocess
   cleanup.
