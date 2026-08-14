@@ -390,7 +390,6 @@ defmodule Jido.MCP.ExMCPClient do
 
   defp sanitize_result({:ok, _response} = result), do: result
   defp sanitize_result({:error, reason}), do: {:error, public_error(reason)}
-  defp sanitize_result(other), do: {:error, public_error({:invalid_client_response, other})}
 
   defp public_error(%Error.TransportError{reason: :outcome_unknown}) do
     %{

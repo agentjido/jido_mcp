@@ -49,7 +49,6 @@ defmodule Jido.MCP.Server.Runtime do
           {:ok, output, _directives} -> {:ok, tool_response(output), state}
           {:error, _reason} -> {:ok, tool_error_response(), state}
           {:error, _reason, _directives} -> {:ok, tool_error_response(), state}
-          _other -> {:ok, tool_error_response(), state}
         end
       else
         {:error, :not_found} ->
@@ -209,12 +208,6 @@ defmodule Jido.MCP.Server.Runtime do
       structuredContent: output
     }
   end
-
-  defp tool_response(output) when is_binary(output),
-    do: %{content: [%{type: "text", text: output}]}
-
-  defp tool_response(output),
-    do: %{content: [%{type: "text", text: encoded_text(output)}]}
 
   defp tool_error_response do
     %{
