@@ -1,28 +1,32 @@
 defmodule Jido.MCP.Response do
   @moduledoc """
-  Helpers for normalizing Anubis responses into stable Jido.MCP result contracts.
+  Helpers for normalizing backend responses into stable Jido.MCP result contracts.
   """
 
   alias Anubis.MCP.Response, as: MCPResponse
 
   @type ok_result :: %{
           status: :ok,
-          endpoint: atom(),
+          endpoint: Jido.MCP.Endpoint.id(),
           method: String.t(),
           data: map(),
-          raw: MCPResponse.t()
+          raw: MCPResponse.t() | map()
         }
 
   @type error_result :: %{
           status: :error,
-          endpoint: atom(),
+          endpoint: Jido.MCP.Endpoint.id(),
           method: String.t(),
           type: :transport | :protocol | :tool_error | :validation,
           message: String.t(),
           details: term()
         }
 
-  @spec normalize(atom(), String.t(), {:ok, MCPResponse.t()} | {:error, term()}) ::
+  @spec normalize(
+          Jido.MCP.Endpoint.id(),
+          String.t(),
+          {:ok, MCPResponse.t() | map()} | {:error, term()}
+        ) ::
           {:ok, ok_result()} | {:error, error_result()}
   def normalize(endpoint_id, method, {:ok, %MCPResponse{} = response}) do
     data = MCPResponse.unwrap(response)
@@ -49,6 +53,29 @@ defmodule Jido.MCP.Response do
     end
   end
 
+  def normalize(endpoint_id, method, {:ok, response}) when is_map(response) do
+    if tool_error?(response) do
+      {:error,
+       %{
+         status: :error,
+         endpoint: endpoint_id,
+         method: method,
+         type: :tool_error,
+         message: extract_error_message(response),
+         details: response
+       }}
+    else
+      {:ok,
+       %{
+         status: :ok,
+         endpoint: endpoint_id,
+         method: method,
+         data: response,
+         raw: response
+       }}
+    end
+  end
+
   def normalize(endpoint_id, method, {:error, reason}) do
     {:error,
      %{
@@ -61,12 +88,26 @@ defmodule Jido.MCP.Response do
      }}
   end
 
+  def normalize(endpoint_id, method, _invalid_response) do
+    {:error,
+     %{
+       status: :error,
+       endpoint: endpoint_id,
+       method: method,
+       type: :transport,
+       message: "The MCP backend returned an invalid response",
+       details: :invalid_backend_response
+     }}
+  end
+
   defp classify_error(%{reason: reason}), do: classify_reason(reason)
   defp classify_error({:error, reason}), do: classify_error(reason)
   defp classify_error(reason) when is_atom(reason), do: classify_reason(reason)
   defp classify_error(_), do: :transport
 
   defp classify_reason(reason) when reason in [:parse_error, :invalid_params], do: :validation
+
+  defp classify_reason(:tool_error), do: :tool_error
 
   defp classify_reason(reason)
        when reason in [:invalid_request, :method_not_found, :internal_error, :protocol_error],
@@ -83,6 +124,13 @@ defmodule Jido.MCP.Response do
   defp extract_error_message(%{error: message}) when is_binary(message),
     do: message
 
+  defp extract_error_message(%{"isError" => true}), do: "The MCP tool returned an error"
+  defp extract_error_message(%{isError: true}), do: "The MCP tool returned an error"
+
   defp extract_error_message(%{} = data), do: inspect(data)
   defp extract_error_message(data), do: inspect(data)
+
+  defp tool_error?(%{"isError" => true}), do: true
+  defp tool_error?(%{isError: true}), do: true
+  defp tool_error?(_response), do: false
 end

@@ -30,6 +30,7 @@ defmodule JidoMcp.MixProject do
       extra_applications: [:logger, :crypto],
       env: [
         version: @version,
+        default_backend: :anubis,
         jido_ai_sync: [max_tools_per_sync: 100, max_proxy_modules_per_endpoint: 200]
       ],
       mod: {Jido.MCP.Application, []}
@@ -40,6 +41,7 @@ defmodule JidoMcp.MixProject do
     [
       {:jido, "~> 2.3"},
       {:anubis_mcp, "~> 2.0"},
+      {:ex_mcp, "1.0.0-rc.8"},
       {:finch, "~> 0.19"},
       {:peri, "~> 0.9"},
       {:jason, "~> 1.4"},
@@ -68,7 +70,7 @@ defmodule JidoMcp.MixProject do
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
+      files: ["lib", "guides", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
       maintainers: ["Mike Hostetler"],
       licenses: ["Apache-2.0"],
       links: %{
@@ -82,7 +84,7 @@ defmodule JidoMcp.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      extras: ["README.md", "guides/ex_mcp_migration.md", "CHANGELOG.md", "LICENSE"],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md", "LICENSE"]
     ]
   end

@@ -9,7 +9,10 @@ defmodule Jido.MCP.Actions.CallTool do
         endpoint_id: Zoi.any(description: "Configured endpoint id") |> Zoi.optional(),
         tool_name: Zoi.string(description: "MCP tool name"),
         arguments: Zoi.map(description: "Tool call arguments") |> Zoi.default(%{}),
-        timeout: Zoi.integer(description: "Request timeout in milliseconds") |> Zoi.optional()
+        timeout: Zoi.integer(description: "Request timeout in milliseconds") |> Zoi.optional(),
+        retry_safe:
+          Zoi.boolean(description: "Caller attestation that a retry is safe") |> Zoi.optional(),
+        idempotency_key: Zoi.string(description: "Application idempotency key") |> Zoi.optional()
       })
 
   alias Jido.MCP.Actions.Helpers
@@ -17,7 +20,12 @@ defmodule Jido.MCP.Actions.CallTool do
   @impl true
   def run(params, context) do
     with {:ok, endpoint_id} <- Helpers.resolve_endpoint_id(params, context) do
-      opts = maybe_put([], :timeout, params[:timeout])
+      opts =
+        []
+        |> maybe_put(:timeout, params[:timeout])
+        |> maybe_put(:retry_safe, params[:retry_safe])
+        |> maybe_put(:idempotency_key, params[:idempotency_key])
+
       Jido.MCP.call_tool(endpoint_id, params[:tool_name], params[:arguments] || %{}, opts)
     end
   end

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Added an endpoint-selectable ExMCP client backend for stdio, Streamable HTTP,
+  and BEAM-local transports. Anubis stays the application default.
+- Added a client backend behaviour so host applications can supply another
+  backend without changing the public `Jido.MCP` API.
+- Added ExMCP integration tests for tools, resources, prompts, credential
+  isolation, cancellation, timeout, and subprocess cleanup.
 - Added `mcp.endpoint.default.set` route and `Jido.MCP.Actions.SetDefaultEndpoint` for runtime default endpoint updates.
 - Added runtime endpoint unregistration APIs: `Jido.MCP.unregister_endpoint/1` and `Jido.MCP.ClientPool.unregister_endpoint/1`.
 - Added `Jido.MCP.await_endpoint_ready/2` public readiness API.
@@ -13,6 +19,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Pinned the qualified ExMCP dependency to `1.0.0-rc.8`.
+- ExMCP tool calls disable normal request retries and use safe-only HTTP stream
+  recovery. Uncertain delivery returns an explicit outcome-unknown error.
+- ExMCP transport and protocol errors are sanitized before they enter public
+  response envelopes.
+- Runtime registration keeps external string endpoint identifiers as strings
+  and does not convert them to atoms.
+- Hardened ExMCP startup, URL, header, stdio, timeout, retry, lifecycle, and
+  error boundaries. Atom and string endpoint ids with the same text now
+  conflict, and Jido AI proxy generation does not create atoms from string ids.
 - MCP plugin allowlists now support `allowed_endpoints: :all`.
 - Removed implicit MCP core -> MCPAI runtime sync coupling; host apps now orchestrate lifecycle + sync explicitly through plugin signals.
 - Endpoint calls now wait on `Anubis.Client.await_ready/2` before executing.

@@ -6,13 +6,23 @@ defmodule Jido.MCP.Endpoint do
   @default_protocol_version "2025-06-18"
   @legacy_sse_protocol_version "2024-11-05"
   @default_request_timeout_ms 30_000
+  @max_endpoint_id_bytes 255
   @default_finch_name Jido.MCP.Finch
 
-  @type id :: atom()
-  @type transport :: {:stdio, keyword()} | {:sse, keyword()} | {:streamable_http, keyword()}
+  alias Jido.MCP.Backend
+
+  @type id :: atom() | String.t()
+  @type backend :: :anubis | :ex_mcp | module()
+  @type transport ::
+          {:stdio, keyword()}
+          | {:sse, keyword()}
+          | {:streamable_http, keyword()}
+          | {:beam, keyword()}
 
   @type t :: %__MODULE__{
           id: id(),
+          backend: backend(),
+          backend_options: keyword(),
           transport: transport(),
           client_info: %{required(String.t()) => String.t()},
           protocol_version: String.t(),
@@ -21,15 +31,33 @@ defmodule Jido.MCP.Endpoint do
         }
 
   @enforce_keys [:id, :transport, :client_info, :protocol_version, :capabilities, :timeouts]
-  defstruct [:id, :transport, :client_info, :protocol_version, :capabilities, :timeouts]
+  defstruct [
+    :id,
+    :transport,
+    :client_info,
+    :protocol_version,
+    :capabilities,
+    :timeouts,
+    backend: :anubis,
+    backend_options: []
+  ]
 
   @spec new(id(), map() | keyword()) :: {:ok, t()} | {:error, term()}
-  def new(id, attrs) when is_atom(id) and is_list(attrs) do
+  def new(id, attrs) when (is_atom(id) or is_binary(id)) and is_list(attrs) do
     new(id, Enum.into(attrs, %{}))
   end
 
-  def new(id, attrs) when is_atom(id) and is_map(attrs) do
-    with {:ok, transport} <-
+  def new(id, attrs) when (is_atom(id) or is_binary(id)) and is_map(attrs) do
+    with :ok <- validate_id(id),
+         {:ok, backend} <-
+           validate_backend(
+             Map.get(attrs, :backend, Map.get(attrs, "backend", Backend.default()))
+           ),
+         {:ok, backend_options} <-
+           validate_backend_options(
+             Map.get(attrs, :backend_options, Map.get(attrs, "backend_options", []))
+           ),
+         {:ok, transport} <-
            validate_transport(Map.get(attrs, :transport, Map.get(attrs, "transport"))),
          {:ok, client_info} <-
            validate_client_info(Map.get(attrs, :client_info, Map.get(attrs, "client_info"))),
@@ -47,6 +75,8 @@ defmodule Jido.MCP.Endpoint do
       {:ok,
        %__MODULE__{
          id: id,
+         backend: backend,
+         backend_options: backend_options,
          transport: transport,
          client_info: client_info,
          protocol_version: protocol_version,
@@ -55,6 +85,8 @@ defmodule Jido.MCP.Endpoint do
        }}
     end
   end
+
+  def new(id, _attrs), do: {:error, {:invalid_endpoint_id, id}}
 
   defp validate_transport({:stdio, opts}),
     do: validate_transport_opts(:stdio, opts)
@@ -68,11 +100,14 @@ defmodule Jido.MCP.Endpoint do
   defp validate_transport({:streamable_http, opts}),
     do: validate_transport_opts(:streamable_http, opts)
 
+  defp validate_transport({:beam, opts}),
+    do: validate_transport_opts(:beam, opts)
+
   defp validate_transport(other),
     do:
       {:error,
        {:invalid_transport, other,
-        "transport must be {:stdio, keyword()}, {:shell, keyword()}, {:sse, keyword()}, or {:streamable_http, keyword()}"}}
+        "transport must be {:stdio, keyword()}, {:shell, keyword()}, {:sse, keyword()}, {:streamable_http, keyword()}, or {:beam, keyword()}"}}
 
   defp validate_transport_opts(_layer, opts) when not is_list(opts) do
     {:error, {:invalid_transport_options, opts, "transport options must be a keyword list"}}
@@ -111,6 +146,31 @@ defmodule Jido.MCP.Endpoint do
   end
 
   defp normalize_transport_opts(_layer, opts), do: opts
+
+  defp validate_id(id) when is_atom(id), do: :ok
+
+  defp validate_id(id) when is_binary(id) do
+    if String.valid?(id) and byte_size(id) <= @max_endpoint_id_bytes and id != "" and
+         String.trim(id) == id and not String.match?(id, ~r/[\x00-\x1F\x7F]/u) do
+      :ok
+    else
+      {:error, {:invalid_endpoint_id, id}}
+    end
+  end
+
+  defp validate_backend(backend), do: Backend.normalize(backend)
+
+  defp validate_backend_options(opts) when is_list(opts) do
+    if Keyword.keyword?(opts) do
+      {:ok, opts}
+    else
+      {:error, {:invalid_backend_options, opts, "backend_options must be a keyword list"}}
+    end
+  end
+
+  defp validate_backend_options(opts) do
+    {:error, {:invalid_backend_options, opts, "backend_options must be a keyword list"}}
+  end
 
   defp normalize_streamable_http_url(opts) do
     case Keyword.pop(opts, :url) do

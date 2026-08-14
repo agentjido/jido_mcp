@@ -11,6 +11,8 @@ defmodule Jido.MCP.EndpointTest do
              })
 
     assert endpoint.id == :github
+    assert endpoint.backend == :anubis
+    assert endpoint.backend_options == []
     assert endpoint.protocol_version == "2025-06-18"
     assert endpoint.timeouts.request_ms == 30_000
     assert endpoint.capabilities == %{}
@@ -151,5 +153,53 @@ defmodule Jido.MCP.EndpointTest do
                client_info: %{name: "my_app"},
                timeouts: %{request_ms: 0}
              })
+  end
+
+  test "accepts the ExMCP backend and BEAM-local transport" do
+    assert {:ok, endpoint} =
+             Endpoint.new(:local, %{
+               backend: "ex_mcp",
+               backend_options: [protocol_mode: :modern_only],
+               transport: {:beam, [server: self()]},
+               client_info: %{name: "my_app"}
+             })
+
+    assert endpoint.backend == :ex_mcp
+    assert endpoint.backend_options == [protocol_mode: :modern_only]
+    assert endpoint.transport == {:beam, [server: self()]}
+  end
+
+  test "rejects invalid backend configuration" do
+    attrs = %{
+      transport: {:stdio, [command: "echo"]},
+      client_info: %{name: "my_app"}
+    }
+
+    assert {:error, {:invalid_backend, :missing_backend, _message}} =
+             Endpoint.new(:bad_backend, Map.put(attrs, :backend, :missing_backend))
+
+    assert {:error, {:invalid_backend_options, _options, _message}} =
+             Endpoint.new(:bad_options, Map.put(attrs, :backend_options, %{}))
+  end
+
+  test "keeps a runtime string id without converting it to an atom" do
+    assert {:ok, endpoint} =
+             Endpoint.new("runtime-47", %{
+               transport: {:stdio, [command: "echo"]},
+               client_info: %{name: "my_app"}
+             })
+
+    assert endpoint.id == "runtime-47"
+  end
+
+  test "rejects unsafe or oversized string endpoint ids" do
+    attrs = %{
+      transport: {:stdio, [command: "echo"]},
+      client_info: %{name: "my_app"}
+    }
+
+    for id <- ["bad\0id", "line\nbreak", String.duplicate("a", 256), <<255>>] do
+      assert {:error, {:invalid_endpoint_id, ^id}} = Endpoint.new(id, attrs)
+    end
   end
 end

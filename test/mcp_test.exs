@@ -114,6 +114,36 @@ defmodule Jido.MCPTest do
     assert {:ok, _} = MCP.list_tools(:github)
   end
 
+  test "rejects infinite ExMCP operation and readiness timeouts" do
+    {:ok, endpoint} =
+      Jido.MCP.Endpoint.new(:github, %{
+        backend: :ex_mcp,
+        transport: {:stdio, [command: "cat"]},
+        client_info: %{name: "test"}
+      })
+
+    ref = %{
+      backend: Jido.MCP.Backend.ExMCP,
+      client: :demo_client,
+      supervisor: :demo_supervisor,
+      transport: :demo_client
+    }
+
+    expect(Jido.MCP.ClientPool, :ensure_client, 2, fn :github ->
+      {:ok, endpoint, ref}
+    end)
+
+    assert {:error, operation_error} = MCP.list_tools(:github, timeout: :infinity)
+    assert operation_error.type == :validation
+    assert operation_error.details.details == %{field: :timeout}
+
+    assert {:error, readiness_error} =
+             MCP.await_endpoint_ready(:github, timeout: :infinity)
+
+    assert readiness_error.reason == :invalid_params
+    assert readiness_error.details == %{field: :timeout}
+  end
+
   test "refresh_endpoint delegates to client pool" do
     {:ok, endpoint} =
       Jido.MCP.Endpoint.new(:github, %{

@@ -95,6 +95,8 @@ defmodule Jido.MCP.ActionsTest do
   test "call/read/get/refresh actions call corresponding API functions" do
     Mimic.expect(Jido.MCP, :call_tool, fn :github, "search", %{"q" => "bug"}, opts ->
       assert opts[:timeout] == 500
+      assert opts[:retry_safe] == true
+      assert opts[:idempotency_key] == "search-1"
       {:ok, %{status: :ok, kind: :call_tool}}
     end)
 
@@ -123,7 +125,9 @@ defmodule Jido.MCP.ActionsTest do
                  endpoint_id: :github,
                  tool_name: "search",
                  arguments: %{"q" => "bug"},
-                 timeout: 500
+                 timeout: 500,
+                 retry_safe: true,
+                 idempotency_key: "search-1"
                },
                context
              )
@@ -190,10 +194,10 @@ defmodule Jido.MCP.ActionsTest do
       client_info: %{name: "my_app"}
     }
 
-    {:ok, endpoint} = Jido.MCP.Endpoint.new(:runtime, attrs)
+    {:ok, endpoint} = Jido.MCP.Endpoint.new("runtime", attrs)
     {:ok, github_endpoint} = Jido.MCP.Endpoint.new(:github, attrs)
 
-    Mimic.expect(Jido.MCP, :register_endpoint, fn %Jido.MCP.Endpoint{id: :runtime} = registered ->
+    Mimic.expect(Jido.MCP, :register_endpoint, fn %Jido.MCP.Endpoint{id: "runtime"} = registered ->
       assert registered.transport == endpoint.transport
       {:ok, registered}
     end)
@@ -202,7 +206,7 @@ defmodule Jido.MCP.ActionsTest do
       {:ok, github_endpoint}
     end)
 
-    assert {:ok, %{endpoint_id: :runtime, registered: true, status: :ok}} =
+    assert {:ok, %{endpoint_id: "runtime", registered: true, status: :ok}} =
              RegisterEndpoint.run(%{endpoint_id: "runtime", endpoint: attrs}, %{})
 
     assert {:ok, %{endpoint_id: :github, registered: false, status: :ok}} =

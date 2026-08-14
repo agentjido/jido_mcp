@@ -73,6 +73,7 @@ defmodule Jido.MCP.ClientPoolTest do
     assert [:github] = ClientPool.endpoint_ids()
     assert %{github: %Endpoint{id: :github}} = ClientPool.endpoints()
     assert {:ok, %Endpoint{id: :github}} = ClientPool.fetch_endpoint(:github)
+    assert {:ok, %Endpoint{id: :github}} = ClientPool.fetch_endpoint("github")
     assert {:ok, :github} = ClientPool.resolve_endpoint_id(:github)
     assert {:ok, :github} = ClientPool.resolve_endpoint_id("github")
     assert {:error, :endpoint_required} = ClientPool.resolve_endpoint_id(nil)
@@ -93,6 +94,19 @@ defmodule Jido.MCP.ClientPoolTest do
     assert {:error, :not_started} = ClientPool.endpoint_status(:runtime)
   end
 
+  test "register_endpoint keeps an untrusted runtime id as a string" do
+    {:ok, endpoint} =
+      Endpoint.new("runtime-47", %{
+        transport: {:stdio, [command: "echo"]},
+        client_info: %{name: "my_app"}
+      })
+
+    assert {:ok, ^endpoint} = ClientPool.register_endpoint(endpoint)
+    assert {:ok, ^endpoint} = ClientPool.fetch_endpoint("runtime-47")
+    assert {:ok, "runtime-47"} = ClientPool.resolve_endpoint_id("runtime-47")
+    assert [:github, "runtime-47"] = ClientPool.endpoint_ids()
+  end
+
   test "register_endpoint rejects duplicate endpoint ids" do
     {:ok, duplicate} =
       Endpoint.new(:github, %{
@@ -102,6 +116,15 @@ defmodule Jido.MCP.ClientPoolTest do
 
     assert {:error, {:endpoint_already_registered, :github}} =
              ClientPool.register_endpoint(duplicate)
+
+    assert {:ok, string_duplicate} =
+             Endpoint.new("github", %{
+               transport: {:stdio, [command: "echo"]},
+               client_info: %{name: "my_app"}
+             })
+
+    assert {:error, {:endpoint_already_registered, "github"}} =
+             ClientPool.register_endpoint(string_duplicate)
   end
 
   test "register_endpoint validates endpoint structs" do
@@ -122,7 +145,7 @@ defmodule Jido.MCP.ClientPoolTest do
   end
 
   test "unregister_endpoint removes endpoint and returns removed definition" do
-    assert {:ok, %Endpoint{id: :github}} = ClientPool.unregister_endpoint(:github)
+    assert {:ok, %Endpoint{id: :github}} = ClientPool.unregister_endpoint("github")
     assert {:error, :unknown_endpoint} = ClientPool.fetch_endpoint(:github)
     assert {:error, :unknown_endpoint} = ClientPool.unregister_endpoint(:github)
   end
@@ -150,7 +173,14 @@ defmodule Jido.MCP.ClientPoolTest do
       })
 
     client = start_supervised!({ReadyClient, %{}})
-    supervisor = start_supervised!({Agent, fn -> nil end})
+
+    {:ok, supervisor} =
+      DynamicSupervisor.start_child(
+        Jido.MCP.ClientSupervisor,
+        {Agent, fn -> nil end}
+      )
+
+    supervisor_monitor = Process.monitor(supervisor)
     stale_ref = %{client: client, supervisor: supervisor, transport: :missing_mcp_transport}
 
     :sys.replace_state(ClientPool, fn state ->
@@ -164,6 +194,7 @@ defmodule Jido.MCP.ClientPoolTest do
     assert {:ok, ^endpoint, ref} = ClientPool.ensure_client(:github)
     refute ref == stale_ref
     refute ref.transport == :missing_mcp_transport
+    assert_receive {:DOWN, ^supervisor_monitor, :process, ^supervisor, _reason}, 1_000
 
     on_exit(fn ->
       if Process.alive?(ref.supervisor) do

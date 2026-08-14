@@ -8,7 +8,9 @@
 [![Ecosystem](https://img.shields.io/badge/ecosystem-jido.run-0ea5e9.svg)](https://jido.run/ecosystem)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2.svg?logo=discord&logoColor=white)](https://jido.run/discord)
 
-`jido_mcp` integrates MCP servers into the Jido ecosystem using `anubis_mcp` directly.
+`jido_mcp` integrates MCP servers into the Jido ecosystem. Each consume-side
+endpoint can use the Anubis or ExMCP client backend. Anubis stays the default
+for backward compatibility.
 
 ## Features
 
@@ -33,6 +35,7 @@ end
 ```elixir
 config :jido_mcp, :endpoints,
   github: %{
+    backend: :ex_mcp,
     transport: {:streamable_http, [base_url: "http://localhost:8080", mcp_path: "/mcp"]},
     client_info: %{name: "my_app", version: "1.0.0"},
     protocol_version: "2025-06-18",
@@ -51,9 +54,43 @@ Supported transports in v1:
 - `{:shell, keyword()}` as an alias normalized to `:stdio`
 - `{:sse, keyword()}` for legacy HTTP+SSE servers using protocol `2024-11-05`
 - `{:streamable_http, keyword()}` for MCP `2025-03-26` / `2025-06-18`, including optional SSE streaming via Anubis' `:enable_sse` option
+- `{:beam, keyword()}` for an ExMCP client and server in the same BEAM instance
 
 For Streamable HTTP, `:url` or a `:base_url` containing a non-root path is
 normalized to Anubis' `:base_url` + `:mcp_path` option shape.
+
+### Client backend selection
+
+Set `backend: :ex_mcp` on one endpoint to opt in. Endpoints without a backend
+continue to use `:anubis`.
+
+```elixir
+config :jido_mcp, :endpoints,
+  remote: %{
+    backend: :ex_mcp,
+    transport:
+      {:streamable_http,
+       [
+         base_url: "https://mcp.example/mcp",
+         headers: [{"Authorization", "Bearer ..."}]
+       ]},
+    client_info: %{name: "my_app", version: "1.0.0"}
+  }
+```
+
+You can set an application default. This setting affects only endpoints that
+do not have a `:backend` value.
+
+```elixir
+config :jido_mcp, :default_backend, :ex_mcp
+```
+
+ExMCP tool calls do not use the normal request retry policy. Stream recovery
+uses `http_stream_retry: :safe_only`, and `retry_safe` is `false` by default.
+Only set `retry_safe: true` when the tool has a tested idempotency contract.
+
+See [the ExMCP migration guide](guides/ex_mcp_migration.md) for transport
+mapping, authorization, known differences, and release gates.
 
 Endpoint config may also be loaded through an MFA callback:
 
@@ -76,7 +113,9 @@ Runtime endpoints can be registered after application start:
 ```
 
 Runtime registration is process-local, rejects duplicate endpoint ids, and starts the MCP client
-only when the endpoint is first used.
+only when the endpoint is first used. Atom and string ids with the same text are duplicates.
+String ids must be valid UTF-8 without ASCII control characters and cannot
+exceed 255 bytes.
 
 ## Runtime Endpoint Lifecycle
 
@@ -110,8 +149,8 @@ For config changes at runtime, unregister then register the updated endpoint.
 
 All calls return normalized envelopes:
 
-- success: `%{status: :ok, endpoint: atom(), method: String.t(), data: map(), raw: ...}`
-- error: `%{status: :error, endpoint: atom(), type: ..., message: String.t(), details: ...}`
+- success: `%{status: :ok, endpoint: atom() | String.t(), method: String.t(), data: map(), raw: ...}`
+- error: `%{status: :error, endpoint: atom() | String.t(), type: ..., message: String.t(), details: ...}`
 
 ## Jido Actions + Plugin
 
@@ -172,8 +211,12 @@ To update the plugin default endpoint at runtime, emit `mcp.endpoint.default.set
 
 `Jido.MCP.JidoAI.Actions.UnsyncToolsFromAgent` removes previously synced proxies.
 
+Dynamic Jido AI proxy modules require a trusted atom endpoint id. String endpoint
+ids remain available for normal MCP calls and actions, but proxy sync rejects them
+because Elixir module names are atoms.
+
 Tool sync uses deterministic MCP readiness: endpoint calls wait on
-`Anubis.Client.await_ready/2` before executing.
+the selected backend before they execute.
 
 Plugin route support:
 

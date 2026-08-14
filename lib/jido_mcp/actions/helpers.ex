@@ -3,7 +3,7 @@ defmodule Jido.MCP.Actions.Helpers do
 
   alias Jido.MCP.{ClientPool, EndpointID}
 
-  @spec resolve_endpoint_id(map(), map()) :: {:ok, atom()} | {:error, term()}
+  @spec resolve_endpoint_id(map(), map()) :: {:ok, EndpointID.endpoint_id()} | {:error, term()}
   def resolve_endpoint_id(params, context) do
     endpoint_id =
       first_present([
@@ -24,10 +24,11 @@ defmodule Jido.MCP.Actions.Helpers do
   end
 
   @spec normalize_endpoint_id(term()) ::
-          {:ok, atom()} | {:error, :endpoint_required | :invalid_endpoint_id | :unknown_endpoint}
+          {:ok, EndpointID.endpoint_id()}
+          | {:error, :endpoint_required | :invalid_endpoint_id | :unknown_endpoint}
   def normalize_endpoint_id(id), do: ClientPool.resolve_endpoint_id(id)
 
-  @spec validate_allowed_endpoint(atom(), map()) :: :ok | {:error, term()}
+  @spec validate_allowed_endpoint(EndpointID.endpoint_id(), map()) :: :ok | {:error, term()}
   def validate_allowed_endpoint(endpoint_id, context) do
     allowed =
       first_present([

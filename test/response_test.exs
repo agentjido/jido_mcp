@@ -12,6 +12,16 @@ defmodule Jido.MCP.ResponseTest do
     assert result.endpoint == :demo
     assert result.method == "tools/list"
     assert result.data == %{"tools" => []}
+    assert Map.keys(result) |> Enum.sort() == [:data, :endpoint, :method, :raw, :status]
+  end
+
+  test "normalizes an ExMCP map without changing envelope keys" do
+    raw = %{"resources" => [%{"uri" => "test://resource"}]}
+
+    assert {:ok, result} = Response.normalize(:demo, "resources/list", {:ok, raw})
+    assert result.data == raw
+    assert result.raw == raw
+    assert Map.keys(result) |> Enum.sort() == [:data, :endpoint, :method, :raw, :status]
   end
 
   test "normalizes tool-level error response" do
@@ -25,6 +35,17 @@ defmodule Jido.MCP.ResponseTest do
     assert error.type == :tool_error
     assert error.message == "boom"
     assert error.method == "tools/call"
+  end
+
+  test "normalizes an ExMCP tool-level error map" do
+    raw = %{"isError" => true, "content" => [%{"type" => "text", "text" => "boom"}]}
+
+    assert {:error, error} = Response.normalize(:demo, "tools/call", {:ok, raw})
+    assert error.type == :tool_error
+    assert error.details == raw
+
+    assert Map.keys(error) |> Enum.sort() ==
+             [:details, :endpoint, :message, :method, :status, :type]
   end
 
   test "normalizes transport error" do
@@ -76,5 +97,14 @@ defmodule Jido.MCP.ResponseTest do
 
     assert error.type == :transport
     assert error.message =~ "reason"
+  end
+
+  test "normalizes an invalid backend response without exposing its contents" do
+    assert {:error, error} =
+             Response.normalize(:demo, "tools/list", {:unexpected, "Bearer secret"})
+
+    assert error.message == "The MCP backend returned an invalid response"
+    assert error.details == :invalid_backend_response
+    refute inspect(error) =~ "secret"
   end
 end
