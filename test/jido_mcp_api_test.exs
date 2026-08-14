@@ -2,7 +2,7 @@ defmodule Jido.MCP.APITest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Anubis.MCP.Response, as: MCPResponse
+  alias Jido.MCP.ExMCPClient
 
   setup :set_mimic_from_context
 
@@ -18,10 +18,10 @@ defmodule Jido.MCP.APITest do
       :ok
     end)
 
-    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
+    Mimic.expect(ExMCPClient, :list_tools, fn :mock_client, opts ->
       assert opts[:cursor] == "abc123"
       assert opts[:timeout] == 321
-      {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
+      {:ok, %{"tools" => []}}
     end)
 
     assert {:ok, result} = Jido.MCP.list_tools(:github, cursor: "abc123")
@@ -41,10 +41,10 @@ defmodule Jido.MCP.APITest do
       :ok
     end)
 
-    Mimic.expect(Anubis.Client, :list_tools, fn :mock_client, opts ->
+    Mimic.expect(ExMCPClient, :list_tools, fn :mock_client, opts ->
       assert opts[:timeout] == 999
       refute Keyword.has_key?(opts, :ready_timeout)
-      {:ok, MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})}
+      {:ok, %{"tools" => []}}
     end)
 
     assert {:ok, _result} = Jido.MCP.list_tools(:github, timeout: 999, ready_timeout: 123)

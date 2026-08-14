@@ -1,0 +1,134 @@
+defmodule JidoMCPTest.StdioServer do
+  def run(log_path) do
+    case IO.read(:stdio, :line) do
+      :eof ->
+        :ok
+
+      {:error, _reason} ->
+        :ok
+
+      line when is_binary(line) ->
+        line
+        |> Jason.decode!()
+        |> handle(log_path)
+
+        run(log_path)
+    end
+  end
+
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
+  defp handle(%{"method" => method} = request, log_path) do
+    log_method(log_path, method)
+
+    case {method, Map.get(request, "id")} do
+      {"initialize", id} ->
+        reply(id, %{
+          "protocolVersion" => "2025-06-18",
+          "capabilities" => %{
+            "tools" => %{},
+            "resources" => %{},
+            "prompts" => %{}
+          },
+          "serverInfo" => %{"name" => "jido-mcp-test", "version" => "1.0.0"}
+        })
+
+      {"tools/list", id} ->
+        reply(id, %{
+          "tools" => [
+            %{
+              "name" => "echo",
+              "description" => "Echo input",
+              "inputSchema" => %{"type" => "object"}
+            },
+            %{
+              "name" => "slow",
+              "description" => "Wait before reply",
+              "inputSchema" => %{"type" => "object"}
+            }
+          ]
+        })
+
+      {"tools/call", id} ->
+        params = Map.get(request, "params", %{})
+        arguments = Map.get(params, "arguments", %{})
+
+        if params["name"] == "slow" do
+          Process.sleep(Map.get(arguments, "delay_ms", 150))
+        end
+
+        reply(id, %{
+          "content" => [
+            %{"type" => "text", "text" => Map.get(arguments, "text", "done")}
+          ]
+        })
+
+      {"resources/list", id} ->
+        reply(id, %{
+          "resources" => [
+            %{"uri" => "test://resource", "name" => "Test resource"}
+          ]
+        })
+
+      {"resources/templates/list", id} ->
+        reply(id, %{
+          "resourceTemplates" => [
+            %{"uriTemplate" => "test://{name}", "name" => "Test template"}
+          ]
+        })
+
+      {"resources/read", id} ->
+        reply(id, %{
+          "contents" => [
+            %{"uri" => "test://resource", "mimeType" => "text/plain", "text" => "resource"}
+          ]
+        })
+
+      {"prompts/list", id} ->
+        reply(id, %{
+          "prompts" => [
+            %{"name" => "greet", "description" => "Create a greeting"}
+          ]
+        })
+
+      {"prompts/get", id} ->
+        reply(id, %{
+          "messages" => [
+            %{"role" => "user", "content" => %{"type" => "text", "text" => "Hello"}}
+          ]
+        })
+
+      {"ping", id} ->
+        reply(id, %{})
+
+      {_notification, nil} ->
+        :ok
+
+      {_method, id} ->
+        error(id, -32_601, "Method not found")
+    end
+  end
+
+  defp reply(id, result) do
+    write(%{"jsonrpc" => "2.0", "id" => id, "result" => result})
+  end
+
+  defp error(id, code, message) do
+    write(%{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => %{"code" => code, "message" => message}
+    })
+  end
+
+  defp write(response) do
+    IO.write(:stdio, Jason.encode!(response) <> "\n")
+  end
+
+  defp log_method(nil, _method), do: :ok
+
+  defp log_method(log_path, method) do
+    File.write!(log_path, method <> "\n", [:append])
+  end
+end
+
+JidoMCPTest.StdioServer.run(List.first(System.argv()))

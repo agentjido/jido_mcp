@@ -1,7 +1,6 @@
 defmodule Jido.MCP.ServerMacroTest do
   use ExUnit.Case, async: true
 
-  alias Anubis.Server.Frame
   alias Jido.MCP.Server
 
   defmodule DemoAction do
@@ -62,31 +61,33 @@ defmodule Jido.MCP.ServerMacroTest do
   test "builds server children and plug opts" do
     children = Server.server_children(DemoServer, transport: :streamable_http)
 
-    assert Anubis.Server.Registry in children
     assert {DemoServer, [transport: :streamable_http]} in children
-    assert [server: DemoServer] == Server.plug_init_opts(DemoServer)
+
+    assert [handler: DemoServer, server_info: %{name: "demo", version: "1.0.0"}] ==
+             Server.plug_init_opts(DemoServer)
+
     assert {DemoServer, [transport: :stdio]} in Server.server_children(DemoServer)
   end
 
   test "macro-published server handles tools/resources/prompts" do
     assert %{tools: [_], resources: [_], prompts: [_]} = DemoServer.__publish__()
 
-    assert {:ok, frame} = DemoServer.init(%{}, Frame.new())
+    assert {:ok, state} = DemoServer.init([])
 
-    assert {:reply, response, _frame} =
-             DemoServer.handle_tool_call("ping", %{value: "ok"}, frame)
+    assert {:ok, response, ^state} =
+             DemoServer.handle_call_tool("ping", %{value: "ok"}, state)
 
-    assert response.structured_content == %{pong: "ok"}
+    assert response.structuredContent == %{pong: "ok"}
 
-    assert {:reply, resource_response, _frame} =
-             DemoServer.handle_resource_read("memo://demo", frame)
+    assert {:ok, resource_response, ^state} =
+             DemoServer.handle_read_resource("memo://demo", state)
 
-    assert resource_response.type == :resource
+    assert resource_response.uri == "memo://demo"
 
-    assert {:reply, prompt_response, _frame} =
-             DemoServer.handle_prompt_get("demo_prompt", %{}, frame)
+    assert {:ok, prompt_response, ^state} =
+             DemoServer.handle_get_prompt("demo_prompt", %{}, state)
 
-    assert prompt_response.type == :prompt
+    assert length(prompt_response.messages) == 1
   end
 
   test "raises when publish option does not evaluate to a map" do

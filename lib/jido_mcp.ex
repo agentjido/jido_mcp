@@ -1,79 +1,82 @@
 defmodule Jido.MCP do
   @moduledoc """
-  Public API for calling MCP servers through direct Anubis client integration.
+  Public API for calling MCP servers through ExMCP clients.
   """
 
-  alias Jido.MCP.{ClientPool, Endpoint, Response}
+  alias Jido.MCP.{ClientPool, Endpoint, ExMCPClient, Response}
 
-  @type endpoint_id :: atom()
+  @type endpoint_id :: Endpoint.id()
   @type result :: {:ok, map()} | {:error, map()}
+
+  defguardp is_endpoint_id(endpoint_id) when is_atom(endpoint_id) or is_binary(endpoint_id)
 
   @spec register_endpoint(Endpoint.t()) ::
           {:ok, Endpoint.t()}
-          | {:error, {:endpoint_already_registered, atom()} | {:invalid_endpoint, term()}}
+          | {:error, {:endpoint_already_registered, endpoint_id()} | {:invalid_endpoint, term()}}
   def register_endpoint(endpoint) do
     ClientPool.register_endpoint(endpoint)
   end
 
   @spec unregister_endpoint(endpoint_id()) :: {:ok, Endpoint.t()} | {:error, :unknown_endpoint}
-  def unregister_endpoint(endpoint_id) when is_atom(endpoint_id) do
+  def unregister_endpoint(endpoint_id) when is_endpoint_id(endpoint_id) do
     ClientPool.unregister_endpoint(endpoint_id)
   end
 
   @spec list_tools(endpoint_id(), keyword()) :: result()
-  def list_tools(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
+  def list_tools(endpoint_id, opts \\ []) when is_endpoint_id(endpoint_id) do
     execute(endpoint_id, "tools/list", opts, fn client, call_opts ->
-      Anubis.Client.list_tools(client, call_opts)
+      ExMCPClient.list_tools(client, call_opts)
     end)
   end
 
   @spec call_tool(endpoint_id(), String.t(), map(), keyword()) :: result()
   def call_tool(endpoint_id, tool_name, arguments \\ %{}, opts \\ [])
-      when is_atom(endpoint_id) and is_binary(tool_name) and is_map(arguments) do
+      when is_endpoint_id(endpoint_id) and is_binary(tool_name) and is_map(arguments) do
     execute(endpoint_id, "tools/call", opts, fn client, call_opts ->
-      Anubis.Client.call_tool(client, tool_name, arguments, call_opts)
+      ExMCPClient.call_tool(client, tool_name, arguments, call_opts)
     end)
   end
 
   @spec list_resources(endpoint_id(), keyword()) :: result()
-  def list_resources(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
+  def list_resources(endpoint_id, opts \\ []) when is_endpoint_id(endpoint_id) do
     execute(endpoint_id, "resources/list", opts, fn client, call_opts ->
-      Anubis.Client.list_resources(client, call_opts)
+      ExMCPClient.list_resources(client, call_opts)
     end)
   end
 
   @spec list_resource_templates(endpoint_id(), keyword()) :: result()
-  def list_resource_templates(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
+  def list_resource_templates(endpoint_id, opts \\ []) when is_endpoint_id(endpoint_id) do
     execute(endpoint_id, "resources/templates/list", opts, fn client, call_opts ->
-      Anubis.Client.list_resource_templates(client, call_opts)
+      ExMCPClient.list_resource_templates(client, call_opts)
     end)
   end
 
   @spec read_resource(endpoint_id(), String.t(), keyword()) :: result()
-  def read_resource(endpoint_id, uri, opts \\ []) when is_atom(endpoint_id) and is_binary(uri) do
+  def read_resource(endpoint_id, uri, opts \\ [])
+      when is_endpoint_id(endpoint_id) and is_binary(uri) do
     execute(endpoint_id, "resources/read", opts, fn client, call_opts ->
-      Anubis.Client.read_resource(client, uri, call_opts)
+      ExMCPClient.read_resource(client, uri, call_opts)
     end)
   end
 
   @spec list_prompts(endpoint_id(), keyword()) :: result()
-  def list_prompts(endpoint_id, opts \\ []) when is_atom(endpoint_id) do
+  def list_prompts(endpoint_id, opts \\ []) when is_endpoint_id(endpoint_id) do
     execute(endpoint_id, "prompts/list", opts, fn client, call_opts ->
-      Anubis.Client.list_prompts(client, call_opts)
+      ExMCPClient.list_prompts(client, call_opts)
     end)
   end
 
   @spec get_prompt(endpoint_id(), String.t(), map(), keyword()) :: result()
   def get_prompt(endpoint_id, prompt_name, arguments \\ %{}, opts \\ [])
-      when is_atom(endpoint_id) and is_binary(prompt_name) and is_map(arguments) do
+      when is_endpoint_id(endpoint_id) and is_binary(prompt_name) and is_map(arguments) do
     execute(endpoint_id, "prompts/get", opts, fn client, call_opts ->
-      Anubis.Client.get_prompt(client, prompt_name, arguments, call_opts)
+      ExMCPClient.get_prompt(client, prompt_name, arguments, call_opts)
     end)
   end
 
   @spec refresh_endpoint(endpoint_id()) ::
           {:ok, Endpoint.t(), ClientPool.client_ref()} | {:error, term()}
-  def refresh_endpoint(endpoint_id) when is_atom(endpoint_id) do
+  def refresh_endpoint(endpoint_id) when is_endpoint_id(endpoint_id) do
     ClientPool.refresh(endpoint_id)
   end
 
@@ -84,11 +87,15 @@ defmodule Jido.MCP do
   subsequent operations (for example runtime tool synchronization).
   """
   @spec await_endpoint_ready(endpoint_id(), keyword()) :: :ok | {:error, term()}
-  def await_endpoint_ready(endpoint_id, opts \\ []) when is_atom(endpoint_id) and is_list(opts) do
+  def await_endpoint_ready(endpoint_id, opts \\ [])
+      when is_endpoint_id(endpoint_id) and is_list(opts) do
     case ClientPool.ensure_client(endpoint_id) do
       {:ok, endpoint, ref} ->
-        timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms)
-        ClientPool.await_ready(ref, timeout)
+        with :ok <- validate_keyword_options(opts),
+             timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms),
+             :ok <- validate_timeout(timeout) do
+          ClientPool.await_ready(ref, timeout)
+        end
 
       {:error, reason} ->
         {:error, reason}
@@ -96,32 +103,69 @@ defmodule Jido.MCP do
   end
 
   @spec endpoint_status(endpoint_id()) :: {:ok, map()} | {:error, term()}
-  def endpoint_status(endpoint_id) when is_atom(endpoint_id) do
+  def endpoint_status(endpoint_id) when is_endpoint_id(endpoint_id) do
     ClientPool.endpoint_status(endpoint_id)
   end
 
   defp execute(endpoint_id, method, opts, fun) do
     with {:ok, endpoint, ref} <- ClientPool.ensure_client(endpoint_id) do
-      timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms)
-      ready_timeout = Keyword.get(opts, :ready_timeout, timeout)
+      case prepare_call_options(endpoint, ref, opts) do
+        {:ok, call_opts, ready_timeout} ->
+          ref
+          |> ClientPool.await_ready(ready_timeout)
+          |> execute_ready(endpoint_id, method, ref, call_opts, fun)
 
+        {:error, error} ->
+          Response.normalize(endpoint_id, method, {:error, error})
+      end
+    end
+  end
+
+  defp prepare_call_options(endpoint, _ref, opts) do
+    with :ok <- validate_keyword_options(opts),
+         timeout = Keyword.get(opts, :timeout, endpoint.timeouts.request_ms),
+         ready_timeout = Keyword.get(opts, :ready_timeout, timeout),
+         :ok <- validate_timeout(timeout),
+         :ok <- validate_timeout(ready_timeout) do
       call_opts =
         opts
         |> Keyword.delete(:ready_timeout)
         |> Keyword.put_new(:timeout, timeout)
 
-      case ClientPool.await_ready(ref, ready_timeout) do
-        :ok ->
-          response =
-            :global.trans({__MODULE__, endpoint_id}, fn ->
-              fun.(ref.client, call_opts)
-            end)
-
-          Response.normalize(endpoint_id, method, response)
-
-        {:error, reason} ->
-          Response.normalize(endpoint_id, method, {:error, reason})
-      end
+      {:ok, call_opts, ready_timeout}
     end
+  end
+
+  defp validate_keyword_options(opts) do
+    if Keyword.keyword?(opts),
+      do: :ok,
+      else: {:error, invalid_options_error(:options)}
+  end
+
+  defp validate_timeout(timeout) when is_integer(timeout) and timeout > 0,
+    do: :ok
+
+  defp validate_timeout(_timeout),
+    do: {:error, invalid_options_error(:timeout)}
+
+  defp invalid_options_error(field) do
+    %{
+      reason: :invalid_params,
+      message: "The MCP request options are invalid",
+      details: %{field: field}
+    }
+  end
+
+  defp execute_ready(:ok, endpoint_id, method, ref, call_opts, fun) do
+    response =
+      :global.trans({__MODULE__, endpoint_id}, fn ->
+        fun.(ref.client, call_opts)
+      end)
+
+    Response.normalize(endpoint_id, method, response)
+  end
+
+  defp execute_ready({:error, reason}, endpoint_id, method, _ref, _call_opts, _fun) do
+    Response.normalize(endpoint_id, method, {:error, reason})
   end
 end

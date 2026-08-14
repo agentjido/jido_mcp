@@ -1,6 +1,6 @@
 defmodule Jido.MCP.Server do
   @moduledoc """
-  Macro for exposing explicit allowlisted Jido capabilities as an MCP server.
+  Macro for exposing explicit allowlisted Jido capabilities as an ExMCP server.
 
   ## Example
 
@@ -23,15 +23,12 @@ defmodule Jido.MCP.Server do
     transport = Keyword.get(opts, :transport, :stdio)
     server_opts = Keyword.get(opts, :server_opts, [])
 
-    [
-      Anubis.Server.Registry,
-      {server_module, Keyword.put(server_opts, :transport, transport)}
-    ]
+    [{server_module, Keyword.put(server_opts, :transport, transport)}]
   end
 
   @spec plug_init_opts(module()) :: keyword()
   def plug_init_opts(server_module) when is_atom(server_module) do
-    [server: server_module]
+    [handler: server_module, server_info: server_module.__server_info__()]
   end
 
   defp normalize_publish!(publish, caller) do
@@ -74,77 +71,122 @@ defmodule Jido.MCP.Server do
     version = Keyword.fetch!(opts, :version)
     publish = normalize_publish!(Keyword.get(opts, :publish, %{}), __CALLER__)
 
-    tools = publish.tools
-    resources = publish.resources
-    prompts = publish.prompts
-
-    capabilities = []
-    capabilities = if tools != [], do: capabilities ++ [:tools], else: capabilities
-    capabilities = if resources != [], do: capabilities ++ [:resources], else: capabilities
-    capabilities = if prompts != [], do: capabilities ++ [:prompts], else: capabilities
+    capabilities =
+      %{}
+      |> maybe_capability(:tools, publish.tools)
+      |> maybe_capability(:resources, publish.resources)
+      |> maybe_capability(:prompts, publish.prompts)
 
     quote generated: true,
           bind_quoted: [
             name: name,
             version: version,
-            tools: tools,
-            resources: resources,
-            prompts: prompts,
-            capabilities: capabilities
+            tools: publish.tools,
+            resources: publish.resources,
+            prompts: publish.prompts,
+            capability_names: Map.keys(capabilities)
           ] do
-      use Anubis.Server,
-        name: name,
-        version: version,
-        capabilities: capabilities
+      alias ExMCP.Protocol.Initialize
+      alias ExMCP.Server.{Handler, HandlerServer, Transport}
+      alias Jido.MCP.Server.Runtime
+
+      use Handler
 
       @publish_tools tools
       @publish_resources resources
       @publish_prompts prompts
+      @server_info %{name: name, version: version}
+      @server_capabilities Map.new(capability_names, &{&1, %{}})
 
       @doc false
       def __publish__,
         do: %{tools: @publish_tools, resources: @publish_resources, prompts: @publish_prompts}
 
-      @impl true
-      def init(_client_info, frame) do
-        frame = Enum.reduce(@publish_tools, frame, &Jido.MCP.Server.Runtime.register_tool(&2, &1))
+      @doc false
+      def __server_info__, do: @server_info
 
-        frame =
-          Enum.reduce(
-            @publish_resources,
-            frame,
-            &Jido.MCP.Server.Runtime.register_resource(&2, &1)
-          )
+      @doc false
+      def __server_capabilities__, do: @server_capabilities
 
-        frame =
-          Enum.reduce(@publish_prompts, frame, &Jido.MCP.Server.Runtime.register_prompt(&2, &1))
+      @doc "Starts the allowlisted MCP server with an ExMCP transport."
+      def start_link(opts \\ []) do
+        case Keyword.get(opts, :transport, :stdio) do
+          transport when transport in [:beam, :test] ->
+            opts
+            |> Keyword.put(:transport, transport)
+            |> Keyword.put_new(:handler, __MODULE__)
+            |> HandlerServer.start_link()
 
-        {:ok, frame}
+          :streamable_http ->
+            Transport.start_server(
+              __MODULE__,
+              @server_info,
+              [],
+              Keyword.put(opts, :transport, :http)
+            )
+
+          transport when transport in [:http, :stdio] ->
+            Transport.start_server(__MODULE__, @server_info, [], opts)
+
+          transport ->
+            {:error, {:unsupported_transport, transport}}
+        end
       end
 
-      @impl true
-      def handle_tool_call(name, arguments, frame) do
-        Jido.MCP.Server.Runtime.handle_tool_call(
+      @impl GenServer
+      def init(args), do: {:ok, Runtime.init_state(args)}
+
+      @impl ExMCP.Server.Handler
+      def handle_initialize(params, state) do
+        result =
+          Initialize.build_initialize_result(params, %{
+            serverInfo: @server_info,
+            capabilities: @server_capabilities
+          })
+
+        {:ok, result, state}
+      end
+
+      @impl ExMCP.Server.Handler
+      def handle_list_tools(_cursor, state),
+        do: Runtime.list_tools(@publish_tools, state)
+
+      @impl ExMCP.Server.Handler
+      def handle_call_tool(name, arguments, state) do
+        Runtime.handle_tool_call(
           @publish_tools,
           name,
           arguments,
-          frame,
+          state,
           __MODULE__
         )
       end
 
-      @impl true
-      def handle_resource_read(uri, frame) do
-        Jido.MCP.Server.Runtime.handle_resource_read(@publish_resources, uri, frame, __MODULE__)
+      @impl ExMCP.Server.Handler
+      def handle_list_resources(_cursor, state),
+        do: Runtime.list_resources(@publish_resources, state)
+
+      @impl ExMCP.Server.Handler
+      def handle_read_resource(uri, state) do
+        Runtime.handle_resource_read(
+          @publish_resources,
+          uri,
+          state,
+          __MODULE__
+        )
       end
 
-      @impl true
-      def handle_prompt_get(name, arguments, frame) do
-        Jido.MCP.Server.Runtime.handle_prompt_get(
+      @impl ExMCP.Server.Handler
+      def handle_list_prompts(_cursor, state),
+        do: Runtime.list_prompts(@publish_prompts, state)
+
+      @impl ExMCP.Server.Handler
+      def handle_get_prompt(name, arguments, state) do
+        Runtime.handle_prompt_get(
           @publish_prompts,
           name,
           arguments,
-          frame,
+          state,
           __MODULE__
         )
       end
@@ -152,12 +194,16 @@ defmodule Jido.MCP.Server do
       @doc """
       Optional authorization callback.
 
-      Return `:ok` (or `true`) to allow the request, anything else to deny.
+      Return `:ok` or `true` to allow the request. Return any other value to
+      deny the request.
       """
-      @spec authorize(map(), Anubis.Server.Frame.t()) :: :ok | true | term()
-      def authorize(_request, _frame), do: :ok
+      @spec authorize(map(), Jido.MCP.Server.Context.t()) :: :ok | true | term()
+      def authorize(_request, _context), do: :ok
 
       defoverridable authorize: 2
     end
   end
+
+  defp maybe_capability(capabilities, _name, []), do: capabilities
+  defp maybe_capability(capabilities, name, _entries), do: Map.put(capabilities, name, %{})
 end

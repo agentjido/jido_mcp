@@ -3,10 +3,11 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
 
   alias Jido.MCP.SchemaAdapter
 
-  @spec build_modules(atom(), [map()], keyword()) ::
+  @spec build_modules(Jido.MCP.Endpoint.id(), [map()], keyword()) ::
           {:ok, [module()], %{term() => [String.t()]}, [map()]} | {:error, term()}
   def build_modules(endpoint_id, tools, opts \\ [])
-      when is_atom(endpoint_id) and is_list(tools) do
+
+  def build_modules(endpoint_id, tools, opts) when is_atom(endpoint_id) and is_list(tools) do
     prefix =
       case Keyword.get(opts, :prefix) do
         value when is_binary(value) and value != "" -> value
@@ -33,6 +34,10 @@ defmodule Jido.MCP.JidoAI.ProxyGenerator do
       {:ok, Enum.reverse(modules), warnings, Enum.reverse(skipped)}
     end
   end
+
+  def build_modules(endpoint_id, tools, _opts)
+      when is_binary(endpoint_id) and is_list(tools),
+      do: {:error, {:unsupported_proxy_endpoint_id, :string}}
 
   defp schema_adapter(opts) do
     adapter = Keyword.get(opts, :schema_adapter, SchemaAdapter.JSV)

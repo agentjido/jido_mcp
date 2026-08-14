@@ -2,8 +2,13 @@ defmodule Jido.MCP.JidoAI.ProxyGeneratorTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Jido.MCP.SchemaAdapter.StrictSubset
   alias Jido.MCP.JidoAI.ProxyGenerator
+  alias Jido.MCP.SchemaAdapter.StrictSubset
+
+  test "does not create module atoms from a string endpoint id" do
+    assert {:error, {:unsupported_proxy_endpoint_id, :string}} =
+             ProxyGenerator.build_modules("runtime-untrusted", [])
+  end
 
   setup :set_mimic_from_context
 

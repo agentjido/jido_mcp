@@ -3,8 +3,11 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
 
   use Agent
 
+  @type endpoint_id :: Jido.MCP.Endpoint.id()
   @type agent_identity :: {:pid, pid()} | {:name, term()}
-  @type registry_key :: {agent_identity(), atom()}
+  @type registry_key :: {agent_identity(), endpoint_id()}
+
+  defguardp is_endpoint_id(endpoint_id) when is_atom(endpoint_id) or is_binary(endpoint_id)
 
   @type subscription :: %{
           agent_server: term(),
@@ -13,7 +16,9 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
 
   @type registry_state :: %{
           entries: %{optional(registry_key()) => [module()]},
-          subscriptions: %{optional(atom()) => %{optional(agent_identity()) => subscription()}}
+          subscriptions: %{
+            optional(endpoint_id()) => %{optional(agent_identity()) => subscription()}
+          }
         }
 
   @spec start_link(keyword()) :: Agent.on_start()
@@ -21,9 +26,9 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     Agent.start_link(fn -> initial_state() end, name: __MODULE__)
   end
 
-  @spec put(term(), atom(), [module()]) :: :ok
+  @spec put(term(), endpoint_id(), [module()]) :: :ok
   def put(agent_server, endpoint_id, modules)
-      when is_atom(endpoint_id) and is_list(modules) do
+      when is_endpoint_id(endpoint_id) and is_list(modules) do
     key = key_for(agent_server, endpoint_id)
 
     Agent.update(__MODULE__, fn state ->
@@ -33,8 +38,8 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec get(term(), atom()) :: [module()]
-  def get(agent_server, endpoint_id) when is_atom(endpoint_id) do
+  @spec get(term(), endpoint_id()) :: [module()]
+  def get(agent_server, endpoint_id) when is_endpoint_id(endpoint_id) do
     key = key_for(agent_server, endpoint_id)
 
     Agent.get(__MODULE__, fn state ->
@@ -45,8 +50,8 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec delete(term(), atom()) :: [module()]
-  def delete(agent_server, endpoint_id) when is_atom(endpoint_id) do
+  @spec delete(term(), endpoint_id()) :: [module()]
+  def delete(agent_server, endpoint_id) when is_endpoint_id(endpoint_id) do
     key = key_for(agent_server, endpoint_id)
 
     Agent.get_and_update(__MODULE__, fn state ->
@@ -66,9 +71,9 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec subscribe(term(), atom(), map()) :: :ok
+  @spec subscribe(term(), endpoint_id(), map()) :: :ok
   def subscribe(agent_server, endpoint_id, options \\ %{})
-      when is_atom(endpoint_id) and is_map(options) do
+      when is_endpoint_id(endpoint_id) and is_map(options) do
     identity = agent_identity(agent_server)
 
     Agent.update(__MODULE__, fn state ->
@@ -86,8 +91,8 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec unsubscribe(term(), atom()) :: :ok
-  def unsubscribe(agent_server, endpoint_id) when is_atom(endpoint_id) do
+  @spec unsubscribe(term(), endpoint_id()) :: :ok
+  def unsubscribe(agent_server, endpoint_id) when is_endpoint_id(endpoint_id) do
     identity = agent_identity(agent_server)
 
     Agent.update(__MODULE__, fn state ->
@@ -110,8 +115,8 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec subscribers_for(atom()) :: [subscription()]
-  def subscribers_for(endpoint_id) when is_atom(endpoint_id) do
+  @spec subscribers_for(endpoint_id()) :: [subscription()]
+  def subscribers_for(endpoint_id) when is_endpoint_id(endpoint_id) do
     Agent.get(__MODULE__, fn state ->
       state
       |> normalize_state()
@@ -121,8 +126,8 @@ defmodule Jido.MCP.JidoAI.ProxyRegistry do
     end)
   end
 
-  @spec key_for(term(), atom()) :: registry_key()
-  def key_for(agent_server, endpoint_id) when is_atom(endpoint_id) do
+  @spec key_for(term(), endpoint_id()) :: registry_key()
+  def key_for(agent_server, endpoint_id) when is_endpoint_id(endpoint_id) do
     {agent_identity(agent_server), endpoint_id}
   end
 

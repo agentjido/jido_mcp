@@ -15,6 +15,17 @@ defmodule JidoMcp.MixProject do
       aliases: aliases(),
       test_coverage: [summary: [threshold: 85]],
 
+      # Cowlib 2.19.0 is the newest compatible release. Plug and Cowboy reject
+      # the response-header bytes in EEF-CVE-2026-43966, and ExMCP does not call
+      # cow_cookie:cookie/1 from EEF-CVE-2026-43969. Tests lock these controls.
+      # Review these exceptions by 2026-09-12 or when a fixed Cowlib is released.
+      hex: [
+        ignore_advisories: [
+          "EEF-CVE-2026-43966",
+          "EEF-CVE-2026-43969"
+        ]
+      ],
+
       # Documentation
       name: "Jido MCP",
       description: @description,
@@ -39,9 +50,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:anubis_mcp, "~> 2.0"},
-      {:finch, "~> 0.19"},
-      {:peri, "~> 0.9"},
+      {:ex_mcp, "1.0.0-rc.8"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},
@@ -68,7 +77,7 @@ defmodule JidoMcp.MixProject do
 
   defp package do
     [
-      files: ["lib", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
+      files: ["lib", "guides", "mix.exs", "README.md", "CHANGELOG.md", "LICENSE"],
       maintainers: ["Mike Hostetler"],
       licenses: ["Apache-2.0"],
       links: %{
@@ -82,7 +91,7 @@ defmodule JidoMcp.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      extras: ["README.md", "guides/ex_mcp_migration.md", "CHANGELOG.md", "LICENSE"],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md", "LICENSE"]
     ]
   end
