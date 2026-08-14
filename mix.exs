@@ -30,7 +30,6 @@ defmodule JidoMcp.MixProject do
       extra_applications: [:logger, :crypto],
       env: [
         version: @version,
-        default_backend: :anubis,
         jido_ai_sync: [max_tools_per_sync: 100, max_proxy_modules_per_endpoint: 200]
       ],
       mod: {Jido.MCP.Application, []}
@@ -40,10 +39,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:anubis_mcp, "~> 2.0"},
       {:ex_mcp, "1.0.0-rc.8"},
-      {:finch, "~> 0.19"},
-      {:peri, "~> 0.9"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},

@@ -206,7 +206,6 @@ defmodule Jido.MCP.ExMCPIntegrationTest do
     jason_ebin = :jason |> :code.lib_dir() |> to_string() |> Path.join("ebin")
 
     Endpoint.new(@stdio_endpoint, %{
-      backend: :ex_mcp,
       transport:
         {:stdio,
          command: System.find_executable("elixir"), args: ["-pa", jason_ebin, fixture, log_path]},
@@ -218,7 +217,6 @@ defmodule Jido.MCP.ExMCPIntegrationTest do
   defp http_endpoint(id, port, authorization) do
     {:ok, endpoint} =
       Endpoint.new(id, %{
-        backend: :ex_mcp,
         transport:
           {:streamable_http,
            base_url: "http://localhost:#{port}/mcp",

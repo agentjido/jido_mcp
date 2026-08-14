@@ -8,9 +8,9 @@
 [![Ecosystem](https://img.shields.io/badge/ecosystem-jido.run-0ea5e9.svg)](https://jido.run/ecosystem)
 [![Discord](https://img.shields.io/badge/discord-join-5865F2.svg?logo=discord&logoColor=white)](https://jido.run/discord)
 
-`jido_mcp` integrates MCP servers into the Jido ecosystem. Each consume-side
-endpoint can use the Anubis or ExMCP client backend. Anubis stays the default
-for backward compatibility.
+`jido_mcp` integrates MCP servers into the Jido ecosystem. ExMCP provides the
+client and server protocol runtime. The public Jido API keeps endpoint pooling,
+response envelopes, actions, and explicit server allowlists stable.
 
 ## Features
 
@@ -35,7 +35,6 @@ end
 ```elixir
 config :jido_mcp, :endpoints,
   github: %{
-    backend: :ex_mcp,
     transport: {:streamable_http, [base_url: "http://localhost:8080", mcp_path: "/mcp"]},
     client_info: %{name: "my_app", version: "1.0.0"},
     protocol_version: "2025-06-18",
@@ -48,26 +47,25 @@ config :jido_mcp, :endpoints,
   }
 ```
 
-Supported transports in v1:
+Supported transports:
 
 - `{:stdio, keyword()}` for shell/command-based MCP servers
 - `{:shell, keyword()}` as an alias normalized to `:stdio`
-- `{:sse, keyword()}` for legacy HTTP+SSE servers using protocol `2024-11-05`
-- `{:streamable_http, keyword()}` for MCP `2025-03-26` / `2025-06-18`, including optional SSE streaming via Anubis' `:enable_sse` option
-- `{:beam, keyword()}` for an ExMCP client and server in the same BEAM instance
+- `{:streamable_http, keyword()}` for MCP Streamable HTTP
+- `{:beam, keyword()}` for a client and server in the same BEAM instance
 
 For Streamable HTTP, `:url` or a `:base_url` containing a non-root path is
-normalized to Anubis' `:base_url` + `:mcp_path` option shape.
+normalized to the existing `:base_url` + `:mcp_path` option shape before it is
+mapped to ExMCP.
 
-### Client backend selection
+The deprecated `{:sse, keyword()}` client transport is not supported. Migrate
+these endpoints to Streamable HTTP.
 
-Set `backend: :ex_mcp` on one endpoint to opt in. Endpoints without a backend
-continue to use `:anubis`.
+### ExMCP client safety
 
 ```elixir
 config :jido_mcp, :endpoints,
   remote: %{
-    backend: :ex_mcp,
     transport:
       {:streamable_http,
        [
@@ -78,19 +76,16 @@ config :jido_mcp, :endpoints,
   }
 ```
 
-You can set an application default. This setting affects only endpoints that
-do not have a `:backend` value.
-
-```elixir
-config :jido_mcp, :default_backend, :ex_mcp
-```
-
 ExMCP tool calls do not use the normal request retry policy. Stream recovery
 uses `http_stream_retry: :safe_only`, and `retry_safe` is `false` by default.
 Only set `retry_safe: true` when the tool has a tested idempotency contract.
 
-See [the ExMCP migration guide](guides/ex_mcp_migration.md) for transport
-mapping, authorization, known differences, and release gates.
+Advanced ExMCP options can be supplied with `:client_options`. Transport,
+credential, timeout, lifecycle, and retry controls remain protected and must
+use the documented endpoint fields.
+
+See [the ExMCP migration guide](guides/ex_mcp_migration.md) for transport and
+server mapping, authorization, compatibility limits, and release gates.
 
 Endpoint config may also be loaded through an MFA callback:
 
@@ -216,7 +211,7 @@ ids remain available for normal MCP calls and actions, but proxy sync rejects th
 because Elixir module names are atoms.
 
 Tool sync uses deterministic MCP readiness: endpoint calls wait on
-the selected backend before they execute.
+ExMCP readiness before they execute.
 
 Plugin route support:
 
@@ -298,7 +293,7 @@ children =
 ### Router (streamable HTTP)
 
 ```elixir
-forward "/mcp", Anubis.Server.Transport.StreamableHTTP.Plug,
+forward "/mcp", ExMCP.HttpPlug,
   Jido.MCP.Server.plug_init_opts(MyApp.MCPServer)
 ```
 

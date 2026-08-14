@@ -1,8 +1,9 @@
 defmodule Jido.MCP.ServerTest do
   use ExUnit.Case, async: true
 
-  alias Anubis.Server.Frame
+  alias Jido.MCP.ExMCPClient
   alias Jido.MCP.Server
+  alias Jido.MCP.Server.Context
 
   defmodule DemoAction do
     use Jido.Action,
@@ -62,22 +63,50 @@ defmodule Jido.MCP.ServerTest do
 
   test "server_children and plug_init_opts return integration helpers" do
     children = Server.server_children(DemoServer, transport: :streamable_http)
-    assert is_list(children)
-    assert length(children) == 2
-    assert Server.plug_init_opts(DemoServer) == [server: DemoServer]
+    assert children == [{DemoServer, [transport: :streamable_http]}]
+
+    assert Server.plug_init_opts(DemoServer) ==
+             [handler: DemoServer, server_info: %{name: "demo-server", version: "1.0.0"}]
   end
 
-  test "use macro publishes explicit allowlist and registers components on init" do
+  test "use macro publishes explicit allowlist and ExMCP definitions" do
     assert %{tools: [DemoAction], resources: [DemoResource], prompts: [DemoPrompt]} =
              DemoServer.__publish__()
 
-    assert {:ok, frame} = DemoServer.init(%{}, Frame.new())
-    assert length(Frame.get_tools(frame)) == 1
-    assert length(Frame.get_resources(frame)) == 1
-    assert length(Frame.get_prompts(frame)) == 1
+    assert {:ok, state} = DemoServer.init([])
+    assert {:ok, [_tool], nil, ^state} = DemoServer.handle_list_tools(nil, state)
+    assert {:ok, [_resource], nil, ^state} = DemoServer.handle_list_resources(nil, state)
+    assert {:ok, [_prompt], nil, ^state} = DemoServer.handle_list_prompts(nil, state)
   end
 
   test "default authorize callback allows requests" do
-    assert :ok = DemoServer.authorize(%{type: :tool_call}, Frame.new())
+    assert :ok = DemoServer.authorize(%{type: :tool_call}, %Context{})
+  end
+
+  test "serves the allowlist through an ExMCP BEAM connection" do
+    server = start_supervised!({DemoServer, transport: :beam})
+
+    client =
+      start_supervised!(
+        {ExMCP.Client,
+         transport: :beam,
+         server: server,
+         protocol_version: "2025-06-18",
+         protocol_mode: :legacy_only,
+         reconnect: false,
+         retry_policy: []}
+      )
+
+    assert {:ok, %{"tools" => [%{"name" => "demo_action"}]}} =
+             ExMCPClient.list_tools(client, [])
+
+    assert {:ok, %{"structuredContent" => %{"ok" => true}}} =
+             ExMCPClient.call_tool(client, "demo_action", %{}, [])
+
+    assert {:ok, %{"contents" => [%{"uri" => "memo://demo"}]}} =
+             ExMCPClient.read_resource(client, "memo://demo", [])
+
+    assert {:ok, %{"messages" => [%{"role" => "user"}]}} =
+             ExMCPClient.get_prompt(client, "demo_prompt", %{}, [])
   end
 end

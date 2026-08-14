@@ -1,8 +1,6 @@
 defmodule Jido.MCP.Server.RuntimeTest do
   use ExUnit.Case, async: true
 
-  alias Anubis.Server.Context
-  alias Anubis.Server.Frame
   alias Jido.MCP.Server.Runtime
 
   defmodule AddAction do
@@ -28,7 +26,7 @@ defmodule Jido.MCP.Server.RuntimeTest do
        %{
          assigns: context.assigns,
          frame_assigns: context.mcp_frame.assigns,
-         session_id: context.mcp_context.session_id,
+         mcp_context_is_nil: is_nil(context.mcp_context),
          request_is_nil: is_nil(context.request),
          transport: context.transport
        }}
@@ -115,108 +113,104 @@ defmodule Jido.MCP.Server.RuntimeTest do
   end
 
   test "handles tool call through Jido action" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:reply, response, _frame} =
-             Runtime.handle_tool_call([AddAction], "add", %{a: 2, b: 5}, frame, AllowAllServer)
+    assert {:ok, response, ^state} =
+             Runtime.handle_tool_call([AddAction], "add", %{a: 2, b: 5}, state, AllowAllServer)
 
-    assert response.type == :tool
-    assert response.structured_content == %{sum: 7}
+    assert response.structuredContent == %{sum: 7}
   end
 
-  test "builds action context from supported frame fields" do
-    frame = %{Frame.new(%{tenant: "zaq"}) | context: %Context{session_id: "session-123"}}
+  test "builds action context from the server state" do
+    state = %{assigns: %{tenant: "zaq"}}
 
-    assert {:reply, response, _frame} =
-             Runtime.handle_tool_call([ContextAction], "context", %{}, frame, AllowAllServer)
+    assert {:ok, response, ^state} =
+             Runtime.handle_tool_call([ContextAction], "context", %{}, state, AllowAllServer)
 
-    assert response.structured_content == %{
+    assert response.structuredContent == %{
              assigns: %{tenant: "zaq"},
              frame_assigns: %{tenant: "zaq"},
-             session_id: "session-123",
+             mcp_context_is_nil: true,
              request_is_nil: true,
              transport: %{}
            }
   end
 
   test "handles resource read" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:reply, response, _frame} =
+    assert {:ok, response, ^state} =
              Runtime.handle_resource_read(
                [EchoResource],
                EchoResource.uri(),
-               frame,
+               state,
                AllowAllServer
              )
 
-    assert response.type == :resource
-    assert response.contents["text"]
+    assert response.uri == EchoResource.uri()
+    assert response.text
   end
 
   test "handles prompt get" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:reply, response, _frame} =
+    assert {:ok, response, ^state} =
              Runtime.handle_prompt_get(
                [BasicPrompt],
                "basic_prompt",
                %{"topic" => "mcp"},
-               frame,
+               state,
                AllowAllServer
              )
 
-    assert response.type == :prompt
     assert length(response.messages) == 1
   end
 
   test "register_tool publishes strict json schema from action schema" do
-    frame = Frame.new() |> Runtime.register_tool(AddAction)
-
-    [tool] = Frame.get_tools(frame)
+    assert {:ok, [tool], nil, _state} = Runtime.list_tools([AddAction], %{})
     assert tool.name == "add"
-    assert is_map(tool.input_schema)
-    assert tool.input_schema["type"]
-    rendered = inspect(tool.input_schema)
+    assert is_map(tool.inputSchema)
+    assert tool.inputSchema["type"]
+    rendered = inspect(tool.inputSchema)
     assert rendered =~ "\"a\""
     assert rendered =~ "\"b\""
   end
 
   test "fails closed when authorization callback raises" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:error, error, _frame} =
-             Runtime.handle_tool_call([AddAction], "add", %{a: 1, b: 2}, frame, RaisingAuthServer)
+    assert {:error, error, ^state} =
+             Runtime.handle_tool_call([AddAction], "add", %{a: 1, b: 2}, state, RaisingAuthServer)
 
-    assert error.code == -32600
+    assert error.code == -32_600
   end
 
   test "returns deterministic execution errors for invalid resource handler output" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:error, error, _frame} =
+    assert {:error, error, ^state} =
              Runtime.handle_resource_read(
                [BrokenResource],
                BrokenResource.uri(),
-               frame,
+               state,
                AllowAllServer
              )
 
-    assert error.code == -32000
+    assert error.code == -32_000
   end
 
   test "returns deterministic execution errors for invalid prompt handler output" do
-    frame = Frame.new()
+    state = %{assigns: %{}}
 
-    assert {:error, error, _frame} =
+    assert {:error, error, ^state} =
              Runtime.handle_prompt_get(
                [BrokenPrompt],
                "broken_prompt",
                %{},
-               frame,
+               state,
                AllowAllServer
              )
 
-    assert error.code == -32000
+    assert error.code == -32_000
   end
 end

@@ -11,14 +11,13 @@ defmodule Jido.MCP.EndpointTest do
              })
 
     assert endpoint.id == :github
-    assert endpoint.backend == :anubis
-    assert endpoint.backend_options == []
+    assert endpoint.client_options == []
     assert endpoint.protocol_version == "2025-06-18"
     assert endpoint.timeouts.request_ms == 30_000
     assert endpoint.capabilities == %{}
   end
 
-  test "supports shell alias, SSE, and streamable HTTP transports" do
+  test "supports the shell alias and streamable HTTP transport" do
     assert {:ok, shell_endpoint} =
              Endpoint.new(:shell, %{
                transport: {:shell, command: "echo", args: ["ok"]},
@@ -28,20 +27,11 @@ defmodule Jido.MCP.EndpointTest do
     assert shell_endpoint.transport == {:stdio, [command: "echo", args: ["ok"]]}
     assert shell_endpoint.protocol_version == "2025-06-18"
 
-    assert {:ok, sse_endpoint} =
+    assert {:error, {:unsupported_transport, :sse, :ex_mcp}} =
              Endpoint.new(:legacy_sse, %{
                transport: {:sse, base_url: "http://localhost:3000", sse_path: "/sse"},
                client_info: %{name: "my_app"}
              })
-
-    assert sse_endpoint.transport ==
-             {:sse,
-              [
-                finch_name: Jido.MCP.Finch,
-                server: [base_url: "http://localhost:3000", sse_path: "/sse"]
-              ]}
-
-    assert sse_endpoint.protocol_version == "2024-11-05"
 
     assert {:ok, http_endpoint} =
              Endpoint.new(:http, %{
@@ -54,37 +44,24 @@ defmodule Jido.MCP.EndpointTest do
     assert http_endpoint.transport ==
              {:streamable_http,
               [
-                finch_name: Jido.MCP.Finch,
                 base_url: "http://localhost:3000",
                 mcp_path: "/mcp",
                 enable_sse: true
               ]}
   end
 
-  test "uses the managed Finch pool by default and preserves a caller pool" do
-    for transport <- [:sse, :streamable_http] do
-      assert {:ok, default_endpoint} =
-               Endpoint.new(transport, %{
-                 transport: {transport, [base_url: "http://localhost:3000"]},
-                 client_info: %{name: "my_app"}
-               })
+  test "does not add Anubis transport options" do
+    assert {:ok, endpoint} =
+             Endpoint.new(:http, %{
+               transport: {:streamable_http, [base_url: "http://localhost:3000"]},
+               client_info: %{name: "my_app"}
+             })
 
-      assert {^transport, default_opts} = default_endpoint.transport
-      assert default_opts[:finch_name] == Jido.MCP.Finch
-
-      assert {:ok, caller_endpoint} =
-               Endpoint.new(transport, %{
-                 transport:
-                   {transport, [base_url: "http://localhost:3000", finch_name: MyApp.MCPFinch]},
-                 client_info: %{name: "my_app"}
-               })
-
-      assert {^transport, caller_opts} = caller_endpoint.transport
-      assert caller_opts[:finch_name] == MyApp.MCPFinch
-    end
+    assert {:streamable_http, opts} = endpoint.transport
+    refute Keyword.has_key?(opts, :finch_name)
   end
 
-  test "normalizes streamable HTTP URL options for Anubis 1.1" do
+  test "normalizes existing streamable HTTP URL options for ExMCP" do
     assert {:ok, endpoint} =
              Endpoint.new(:http_url, %{
                transport: {:streamable_http, url: "http://localhost:3000/custom-mcp"},
@@ -155,31 +132,30 @@ defmodule Jido.MCP.EndpointTest do
              })
   end
 
-  test "accepts the ExMCP backend and BEAM-local transport" do
+  test "accepts ExMCP client options and BEAM-local transport" do
     assert {:ok, endpoint} =
              Endpoint.new(:local, %{
                backend: "ex_mcp",
-               backend_options: [protocol_mode: :modern_only],
+               client_options: [protocol_mode: :modern_only],
                transport: {:beam, [server: self()]},
                client_info: %{name: "my_app"}
              })
 
-    assert endpoint.backend == :ex_mcp
-    assert endpoint.backend_options == [protocol_mode: :modern_only]
+    assert endpoint.client_options == [protocol_mode: :modern_only]
     assert endpoint.transport == {:beam, [server: self()]}
   end
 
-  test "rejects invalid backend configuration" do
+  test "rejects an unsupported backend marker and invalid client options" do
     attrs = %{
       transport: {:stdio, [command: "echo"]},
       client_info: %{name: "my_app"}
     }
 
-    assert {:error, {:invalid_backend, :missing_backend, _message}} =
+    assert {:error, {:unsupported_backend, :missing_backend, :ex_mcp}} =
              Endpoint.new(:bad_backend, Map.put(attrs, :backend, :missing_backend))
 
-    assert {:error, {:invalid_backend_options, _options, _message}} =
-             Endpoint.new(:bad_options, Map.put(attrs, :backend_options, %{}))
+    assert {:error, {:invalid_client_options, _options, _message}} =
+             Endpoint.new(:bad_options, Map.put(attrs, :client_options, %{}))
   end
 
   test "keeps a runtime string id without converting it to an atom" do

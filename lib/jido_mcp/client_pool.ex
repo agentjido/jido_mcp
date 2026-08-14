@@ -1,11 +1,11 @@
 defmodule Jido.MCP.ClientPool do
   @moduledoc """
-  Shared client pool that manages one backend client per configured endpoint.
+  Shared client pool that manages one ExMCP client per configured endpoint.
   """
 
   use GenServer
 
-  alias Jido.MCP.{Backend, Config, Endpoint, EndpointID}
+  alias Jido.MCP.{Config, Endpoint, EndpointID, ExMCPClient}
 
   @registry Jido.MCP.Registry
   @supervisor Jido.MCP.ClientSupervisor
@@ -13,7 +13,6 @@ defmodule Jido.MCP.ClientPool do
   defguardp is_endpoint_id(endpoint_id) when is_atom(endpoint_id) or is_binary(endpoint_id)
 
   @type client_ref :: %{
-          backend: module(),
           client: GenServer.name(),
           supervisor: GenServer.name(),
           transport: GenServer.name()
@@ -33,8 +32,7 @@ defmodule Jido.MCP.ClientPool do
   def await_ready(%{client: client} = ref, timeout \\ 5_000) do
     case resolve_name(client) do
       pid when is_pid(pid) ->
-        backend = Map.get(ref, :backend, Jido.MCP.Backend.Anubis)
-        backend.await_ready(ref, timeout)
+        ExMCPClient.await_ready(ref, timeout)
 
       _ ->
         {:error, :client_not_started}
@@ -155,7 +153,6 @@ defmodule Jido.MCP.ClientPool do
        {:ok,
         %{
           endpoint_id: resolved_id,
-          backend: Map.get(ref, :backend, Jido.MCP.Backend.Anubis),
           client_alive?: process_alive?(ref.client),
           supervisor_alive?: process_alive?(ref.supervisor),
           transport_alive?: process_alive?(ref.transport)
@@ -237,12 +234,11 @@ defmodule Jido.MCP.ClientPool do
   end
 
   defp start_endpoint(endpoint_id, endpoint, state) do
-    ref = names_for(endpoint_id, endpoint.backend)
-    backend = ref.backend
+    ref = names_for(endpoint_id)
 
-    case backend.child_spec(endpoint, ref) do
+    case ExMCPClient.child_spec(endpoint, ref) do
       {:ok, child_spec} -> start_endpoint_child(endpoint_id, child_spec, ref, state)
-      {:error, reason} -> {:error, backend.sanitize_start_error(reason), state}
+      {:error, reason} -> {:error, ExMCPClient.sanitize_start_error(reason), state}
     end
   end
 
@@ -261,7 +257,7 @@ defmodule Jido.MCP.ClientPool do
         {:ok, ref, put_in(state, [:refs, endpoint_id], ref)}
 
       {:error, reason} ->
-        {:error, ref.backend.sanitize_start_error(reason), state}
+        {:error, ExMCPClient.sanitize_start_error(reason), state}
     end
   end
 
@@ -279,22 +275,14 @@ defmodule Jido.MCP.ClientPool do
     end
   end
 
-  defp names_for(endpoint_id, backend) do
-    backend = Backend.module_for(backend)
+  defp names_for(endpoint_id) do
     client = {:via, Registry, {@registry, {:client, endpoint_id}}}
 
     %{
-      backend: backend,
       supervisor: {:via, Registry, {@registry, {:supervisor, endpoint_id}}},
       client: client,
-      transport: transport_name(backend, endpoint_id, client)
+      transport: client
     }
-  end
-
-  defp transport_name(Jido.MCP.Backend.ExMCP, _endpoint_id, client), do: client
-
-  defp transport_name(_backend, endpoint_id, _client) do
-    {:via, Registry, {@registry, {:transport, endpoint_id}}}
   end
 
   defp process_alive?(name) do

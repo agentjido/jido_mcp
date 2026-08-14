@@ -12,7 +12,7 @@ defmodule Jido.MCP.Actions.RegisterEndpoint do
         endpoint:
           Zoi.map(
             description:
-              "Endpoint attrs map (backend, backend_options, transport, client_info, protocol_version, capabilities, timeouts)"
+              "Endpoint attrs map (transport, client_info, protocol_version, capabilities, timeouts, client_options)"
           )
       })
 

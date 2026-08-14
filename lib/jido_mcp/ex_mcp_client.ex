@@ -1,12 +1,10 @@
-defmodule Jido.MCP.Backend.ExMCP do
+defmodule Jido.MCP.ExMCPClient do
   @moduledoc false
-
-  @behaviour Jido.MCP.Backend
 
   alias ExMCP.Error
   alias Jido.MCP.Endpoint
 
-  @protected_backend_options [
+  @protected_client_options [
     :capabilities,
     :cd,
     :command,
@@ -49,7 +47,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     :max_retry_delay
   ]
 
-  @impl true
   def child_spec(%Endpoint{} = endpoint, ref) do
     with {:ok, client_opts} <- client_options(endpoint, ref) do
       children = [
@@ -69,10 +66,10 @@ defmodule Jido.MCP.Backend.ExMCP do
   end
 
   @doc false
-  @spec client_options(Endpoint.t(), Jido.MCP.Backend.client_ref()) ::
+  @spec client_options(Endpoint.t(), Jido.MCP.ClientPool.client_ref()) ::
           {:ok, keyword()} | {:error, term()}
   def client_options(%Endpoint{} = endpoint, ref) do
-    with :ok <- validate_backend_options(endpoint.backend_options),
+    with :ok <- validate_client_options(endpoint.client_options),
          {:ok, transport_opts} <- transport_options(endpoint.transport),
          :ok <- validate_finite_timeouts(transport_opts) do
       base_opts = [
@@ -91,7 +88,7 @@ defmodule Jido.MCP.Backend.ExMCP do
       opts =
         base_opts
         |> Keyword.merge(transport_opts)
-        |> Keyword.merge(endpoint.backend_options)
+        |> Keyword.merge(endpoint.client_options)
         |> Keyword.drop([
           :transports,
           :fallback_strategy,
@@ -114,7 +111,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end
   end
 
-  @impl true
   def await_ready(%{client: client}, timeout) do
     case GenServer.call(client, :get_status, timeout) do
       {:ok, %{connection_status: :ready}} -> :ok
@@ -127,7 +123,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     :exit, _reason -> {:error, :client_not_ready}
   end
 
-  @impl true
   def sanitize_start_error({:invalid_transport_options, field}) when is_atom(field),
     do: {:invalid_transport_options, field}
 
@@ -138,8 +133,8 @@ defmodule Jido.MCP.Backend.ExMCP do
       when is_atom(transport),
       do: {:unsupported_transport, transport, :ex_mcp}
 
-  def sanitize_start_error({:protected_backend_option, option}) when is_atom(option),
-    do: {:protected_backend_option, option}
+  def sanitize_start_error({:protected_client_option, option}) when is_atom(option),
+    do: {:protected_client_option, option}
 
   def sanitize_start_error(:handshake_timeout), do: :client_not_ready
   def sanitize_start_error({:connection_error, _details}), do: :connection_failed
@@ -149,7 +144,6 @@ defmodule Jido.MCP.Backend.ExMCP do
 
   def sanitize_start_error(_reason), do: :client_start_failed
 
-  @impl true
   def list_tools(client, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -158,7 +152,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def call_tool(client, tool_name, arguments, opts) do
     request(fn ->
       with {:ok, opts} <- tool_opts(opts) do
@@ -167,7 +160,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def list_resources(client, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -176,7 +168,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def list_resource_templates(client, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -185,7 +176,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def read_resource(client, uri, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -194,7 +184,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def list_prompts(client, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -203,7 +192,6 @@ defmodule Jido.MCP.Backend.ExMCP do
     end)
   end
 
-  @impl true
   def get_prompt(client, prompt_name, arguments, opts) do
     request(fn ->
       with {:ok, opts} <- safe_opts(opts) do
@@ -397,9 +385,12 @@ defmodule Jido.MCP.Backend.ExMCP do
     _kind, _reason -> {:error, public_error(:request_failed)}
   end
 
+  defp sanitize_result({:ok, response}) when is_map(response),
+    do: {:ok, stringify_keys(response)}
+
   defp sanitize_result({:ok, _response} = result), do: result
   defp sanitize_result({:error, reason}), do: {:error, public_error(reason)}
-  defp sanitize_result(other), do: {:error, public_error({:invalid_backend_response, other})}
+  defp sanitize_result(other), do: {:error, public_error({:invalid_client_response, other})}
 
   defp public_error(%Error.TransportError{reason: :outcome_unknown}) do
     %{
@@ -483,10 +474,10 @@ defmodule Jido.MCP.Backend.ExMCP do
   defp safe_field(field) when is_atom(field) or is_binary(field), do: field
   defp safe_field(_field), do: :request
 
-  defp validate_backend_options(opts) do
-    case Enum.find(Keyword.keys(opts), &(&1 in @protected_backend_options)) do
+  defp validate_client_options(opts) do
+    case Enum.find(Keyword.keys(opts), &(&1 in @protected_client_options)) do
       nil -> :ok
-      option -> {:error, {:protected_backend_option, option}}
+      option -> {:error, {:protected_client_option, option}}
     end
   end
 
@@ -569,6 +560,17 @@ defmodule Jido.MCP.Backend.ExMCP do
   defp valid_header?(_header), do: false
 
   defp positive_integer?(value), do: is_integer(value) and value > 0
+
+  defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
+
+  defp stringify_keys(value) when is_map(value) and not is_struct(value) do
+    Map.new(value, fn {key, nested} ->
+      key = if is_atom(key), do: Atom.to_string(key), else: key
+      {key, stringify_keys(nested)}
+    end)
+  end
+
+  defp stringify_keys(value), do: value
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)

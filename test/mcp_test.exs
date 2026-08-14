@@ -2,8 +2,8 @@ defmodule Jido.MCPTest do
   use ExUnit.Case, async: true
   use Mimic
 
-  alias Anubis.MCP.Response, as: MCPResponse
   alias Jido.MCP
+  alias Jido.MCP.ExMCPClient
 
   setup :set_mimic_private
   setup :verify_on_exit!
@@ -29,9 +29,9 @@ defmodule Jido.MCPTest do
   end
 
   test "list tools forwards cursor and timeout" do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
+    raw = %{"tools" => []}
 
-    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
+    expect(ExMCPClient, :list_tools, fn :demo_client, opts ->
       assert opts[:cursor] == "next"
       assert opts[:timeout] == 1_200
       {:ok, raw}
@@ -42,9 +42,9 @@ defmodule Jido.MCPTest do
   end
 
   test "list resources forwards cursor and timeout" do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"resources" => []}})
+    raw = %{"resources" => []}
 
-    expect(Anubis.Client, :list_resources, fn :demo_client, opts ->
+    expect(ExMCPClient, :list_resources, fn :demo_client, opts ->
       assert opts[:cursor] == "c1"
       assert opts[:timeout] == 800
       {:ok, raw}
@@ -55,9 +55,9 @@ defmodule Jido.MCPTest do
   end
 
   test "list resource templates forwards cursor and timeout" do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"resourceTemplates" => []}})
+    raw = %{"resourceTemplates" => []}
 
-    expect(Anubis.Client, :list_resource_templates, fn :demo_client, opts ->
+    expect(ExMCPClient, :list_resource_templates, fn :demo_client, opts ->
       assert opts[:cursor] == "c2"
       assert opts[:timeout] == 900
       {:ok, raw}
@@ -68,9 +68,9 @@ defmodule Jido.MCPTest do
   end
 
   test "list prompts forwards cursor and timeout" do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"prompts" => []}})
+    raw = %{"prompts" => []}
 
-    expect(Anubis.Client, :list_prompts, fn :demo_client, opts ->
+    expect(ExMCPClient, :list_prompts, fn :demo_client, opts ->
       assert opts[:cursor] == "p1"
       assert opts[:timeout] == 1_100
       {:ok, raw}
@@ -81,19 +81,19 @@ defmodule Jido.MCPTest do
   end
 
   test "call_tool, read_resource, and get_prompt pass through arguments" do
-    ok_raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{}})
+    ok_raw = %{}
 
-    expect(Anubis.Client, :call_tool, fn :demo_client, "search", %{"q" => "bug"}, opts ->
+    expect(ExMCPClient, :call_tool, fn :demo_client, "search", %{"q" => "bug"}, opts ->
       assert opts[:timeout] == 2_000
       {:ok, ok_raw}
     end)
 
-    expect(Anubis.Client, :read_resource, fn :demo_client, "repo://README", opts ->
+    expect(ExMCPClient, :read_resource, fn :demo_client, "repo://README", opts ->
       assert opts[:timeout] == 2_100
       {:ok, ok_raw}
     end)
 
-    expect(Anubis.Client, :get_prompt, fn :demo_client, "release", %{"v" => "1.0.0"}, opts ->
+    expect(ExMCPClient, :get_prompt, fn :demo_client, "release", %{"v" => "1.0.0"}, opts ->
       assert opts[:timeout] == 2_200
       {:ok, ok_raw}
     end)
@@ -104,9 +104,9 @@ defmodule Jido.MCPTest do
   end
 
   test "uses endpoint default timeout when one is not provided", %{endpoint: endpoint} do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
+    raw = %{"tools" => []}
 
-    expect(Anubis.Client, :list_tools, fn :demo_client, opts ->
+    expect(ExMCPClient, :list_tools, fn :demo_client, opts ->
       assert opts[:timeout] == endpoint.timeouts.request_ms
       {:ok, raw}
     end)
@@ -117,13 +117,11 @@ defmodule Jido.MCPTest do
   test "rejects infinite ExMCP operation and readiness timeouts" do
     {:ok, endpoint} =
       Jido.MCP.Endpoint.new(:github, %{
-        backend: :ex_mcp,
         transport: {:stdio, [command: "cat"]},
         client_info: %{name: "test"}
       })
 
     ref = %{
-      backend: Jido.MCP.Backend.ExMCP,
       client: :demo_client,
       supervisor: :demo_supervisor,
       transport: :demo_client

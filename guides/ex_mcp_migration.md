@@ -1,55 +1,40 @@
-# ExMCP Client Migration
+# Anubis to ExMCP Migration
 
-This guide applies to the consume-side `Jido.MCP` endpoint runtime. The
-`Jido.MCP.Server` allowlist and server bridge continue to use Anubis.
+`jido_mcp` now uses ExMCP for both client and server protocol work. Anubis is
+not a dependency and there is no backend selection setting.
 
 ## Qualified version
 
-`jido_mcp` pins ExMCP `1.0.0-rc.8` from Hex. This is the version used for the
-backend parity, retry-safety, cancellation, timeout, and cleanup tests.
+`jido_mcp` pins ExMCP `1.0.0-rc.8` from Hex. This exact version is used by the
+tool, resource, prompt, retry, cancellation, timeout, credential isolation, and
+process cleanup tests.
 
-Anubis `2.0.0` stays installed and stays the default backend. Existing endpoint
-configuration does not select ExMCP unless the application changes the default.
+## Public client API
 
-## Select ExMCP
+The following Jido APIs keep their names and result envelope keys:
 
-Select the backend on one endpoint:
+- `Jido.MCP.list_tools/2` and `Jido.MCP.call_tool/4`
+- resource and prompt functions
+- endpoint registration, refresh, readiness, status, and removal
+- Jido actions and plugin routes
 
-```elixir
-config :jido_mcp, :endpoints,
-  remote: %{
-    backend: :ex_mcp,
-    transport:
-      {:streamable_http,
-       [base_url: "https://mcp.example", mcp_path: "/mcp"]},
-    client_info: %{name: "my_app", version: "1.0.0"},
-    timeouts: %{request_ms: 30_000}
-  }
-```
+The `raw` value in a successful envelope is now always the ExMCP result map.
 
-Or set the application default:
+Remove `backend: :anubis`, `backend: :ex_mcp`, and
+`config :jido_mcp, :default_backend, ...` from endpoint configuration. A
+`backend: :ex_mcp` endpoint marker is accepted during this migration, but it
+has no selection effect. Other backend values fail validation.
 
-```elixir
-config :jido_mcp, :default_backend, :ex_mcp
-```
+Runtime string endpoint identifiers remain strings. `jido_mcp` does not create
+atoms from untrusted identifiers. Jido AI dynamic proxy generation still
+requires a trusted atom endpoint identifier because Elixir module names are
+atoms.
 
-An explicit endpoint `:backend` value takes precedence over the application
-default. The accepted built-in values are `:anubis` and `:ex_mcp`. Known string
-values are also accepted without conversion of an endpoint identifier to an
-atom.
-
-Runtime registration keeps a string endpoint identifier as a string. Existing
-atom identifiers and configured atom keys continue to work.
-
-Jido AI dynamic proxy generation requires a trusted atom endpoint identifier.
-It rejects a string endpoint identifier because an Elixir module name is an
-atom. Normal MCP calls and actions continue to support string identifiers.
-
-## Transport mapping
+## Client transport mapping
 
 ### stdio
 
-The existing shape is accepted:
+The existing stdio shape is accepted:
 
 ```elixir
 transport:
@@ -62,28 +47,25 @@ transport:
    ]}
 ```
 
-The backend maps `command` and `args` to the ExMCP command list. It maps `cwd`
+The adapter maps `command` and `args` to the ExMCP command list. It maps `cwd`
 to `cd`. The `env` option can be a map or a list of key and value tuples.
 Command parts, working directories, environment names, and environment values
-are validated before the client starts. ExMCP uses its isolated child-process
-environment policy unless the transport explicitly selects another policy.
+are validated before the client starts.
 
 ### Streamable HTTP
 
-The backend maps `base_url` and `mcp_path` to the ExMCP `url` and `endpoint`
-options. It maps `enable_sse` to `use_sse`. It forwards headers, ExMCP auth
-providers, network policy, and finite transport timeout options.
+The existing `base_url` and `mcp_path` fields map to the ExMCP `url` and
+`endpoint` fields. The `enable_sse` field maps to `use_sse`. Request headers,
+auth providers, network policy, and finite transport timeouts are forwarded.
 
-The backend does not map an MCP path that contains a URL query. Move
-authorization data from the URL to a header or an auth provider. The backend
-returns `{:unsupported_transport_option, :mcp_path_query}` for this case.
 The base URL cannot contain user information, a query, a fragment, or an
-unmapped path. Header names and values are bounded and validated. Duplicate
-header names are rejected without regard to letter case.
+unmapped path. The MCP path cannot contain a query. Put authorization data in a
+header or an auth provider. Header names and values are bounded and validated.
+Duplicate header names are rejected without regard to letter case.
 
 ### BEAM-local
 
-ExMCP endpoints can use a local server process:
+An endpoint can use a live ExMCP server process in the same VM:
 
 ```elixir
 transport: {:beam, [server: server_pid]}
@@ -91,32 +73,33 @@ transport: {:beam, [server: server_pid]}
 
 ### Legacy HTTP+SSE
 
-The Anubis `{:sse, ...}` endpoint shape does not have a behavior-preserving
-ExMCP mapping. Keep `backend: :anubis` for these endpoints. An ExMCP endpoint
-returns `{:unsupported_transport, :sse, :ex_mcp}` when it starts.
+The deprecated `{:sse, ...}` client shape is not supported. Migrate the server
+to Streamable HTTP before this release. Endpoint validation returns
+`{:unsupported_transport, :sse, :ex_mcp}` for this shape.
 
 ## Authorization and client ownership
 
-Static request headers can stay in the Streamable HTTP transport options. For
-short-lived credentials, use an ExMCP `auth_provider` in `backend_options` so
+Static request headers stay in the Streamable HTTP transport options. For
+short-lived credentials, use an ExMCP `auth_provider` in `client_options` so
 the host supplies authorization data at request time.
 
-`jido_mcp` does not write authorization data to persistent storage and does not
-include it in its errors. ExMCP stores the active transport or auth-provider
-state in the endpoint client process while the connection is active.
+`jido_mcp` does not write authorization data to persistent storage or include
+it in public errors. Each endpoint has its own supervisor and ExMCP client
+process. Two endpoints cannot share authenticated client or session state.
 
-Each endpoint has its own supervisor and client process. Registry names use the
-existing endpoint identifier. Two endpoint identifiers cannot share an authenticated
-client or session, even when they connect to the same URL.
+`client_options` cannot replace transport identity, credentials, lifecycle
+settings, request limits, or retry settings. Put these settings in the
+documented endpoint fields. Operation and readiness timeouts must be finite
+positive integers.
 
-`backend_options` cannot replace transport identity, credentials, lifecycle
-settings, request limits, or retry settings. Put transport settings in the
-endpoint transport options. ExMCP operation and readiness timeouts must be
-finite positive integers.
+ExMCP `1.0.0-rc.8` sends its own legacy `clientInfo` during initialization. It
+does not use the endpoint `client_info` value in that request. It also uses
+endpoint client capabilities only in the modern discovery flow. Test servers
+that require a specific legacy client identity before the release.
 
 ## Tool retry safety
 
-The ExMCP backend applies these options to every generic tool call:
+Generic tool calls use these controls:
 
 ```elixir
 retry_policy: false,
@@ -125,9 +108,9 @@ retry_safe: false
 ```
 
 If response delivery is ambiguous, the public error has reason
-`:outcome_unknown`. The backend does not retry the tool.
+`:outcome_unknown`. The client does not retry the tool.
 
-The caller can attest a tested idempotency contract:
+Set `retry_safe: true` only when the server has a tested idempotency contract:
 
 ```elixir
 Jido.MCP.call_tool(:billing, "charge", arguments,
@@ -137,46 +120,39 @@ Jido.MCP.call_tool(:billing, "charge", arguments,
 )
 ```
 
-The server must use the key to deduplicate the operation. Tool annotations are
-not an idempotency guarantee.
+## Server migration
 
-## Public compatibility
+The `use Jido.MCP.Server` macro and explicit `publish` allowlist stay. The macro
+now implements `ExMCP.Server.Handler`.
 
-The following interfaces do not change:
+For Phoenix or Plug, replace the Anubis plug:
 
-- `Jido.MCP.list_tools/2` and `call_tool/4`
-- resource and prompt functions
-- endpoint register, refresh, readiness, status, and unregister functions
-- success and error envelope keys
-- the `Jido.MCP.Server` explicit allowlist contract
+```elixir
+forward "/mcp", ExMCP.HttpPlug,
+  Jido.MCP.Server.plug_init_opts(MyApp.MCPServer)
+```
 
-For ExMCP success envelopes, `raw` is the raw ExMCP result map. Anubis
-endpoints continue to return an `Anubis.MCP.Response` in `raw`.
+`Jido.MCP.Server.server_children/2` no longer returns an Anubis registry child.
+It returns the allowlisted server child only. `:streamable_http` remains a Jido
+alias and starts the ExMCP HTTP transport.
 
-ExMCP `1.0.0-rc.8` sends its own legacy `clientInfo` during initialization. It
-does not use the endpoint `client_info` value in that legacy request. It also
-uses endpoint client capabilities only in the modern discovery flow. Keep an
-endpoint on Anubis if the server requires the configured legacy client identity
-or legacy client capabilities.
+Resource, prompt, and authorization callbacks now receive
+`Jido.MCP.Server.Context`. This context contains `assigns`, the validated ExMCP
+request context, and safe transport identity fields. Code that pattern matches
+`Anubis.Server.Frame` must change to the Jido context.
 
 ## Release decision
 
-Do not make ExMCP the default in the current major version. A default change
-changes transport and response behavior and must use a major release unless a
-future compatibility review proves that no observable behavior changes.
+The normal client call API and envelopes remain compatible. Full removal still
+changes the documented server plug, callback context type, raw response type,
+and legacy HTTP+SSE support. A major release is the safe semantic-versioning
+choice unless all downstream users confirm that they do not use these paths.
 
-The ExMCP default gate requires all of these results:
+Before release:
 
-- the supported stdio and Streamable HTTP parity tests pass in CI;
-- downstream `jido_connect_mcp` and host integration suites pass;
-- a stable ExMCP 1.0 release replaces the release candidate;
-- the ExMCP legacy client identity and capability gaps are resolved or accepted;
-- active advisories in `cowlib` are fixed or formally accepted for the intended
-  deployments;
-- an opt-in release completes a production soak without client, session,
-  cancellation, or subprocess leaks.
-
-Remove the Anubis client backend only in a later major release. Before removal,
-publish a deprecation period and provide a behavior-preserving path for legacy
-HTTP+SSE endpoints. Keep the Anubis server bridge until a separate server
-migration preserves the explicit allowlist contract.
+- run the `jido_connect_mcp` and host integration suites;
+- replace the ExMCP release candidate with stable 1.0 when it is available;
+- accept or fix the active `cowlib` advisories for the target deployments;
+- test any server that checks the legacy client identity;
+- complete a production soak for client, session, cancellation, and subprocess
+  cleanup.

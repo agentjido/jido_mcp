@@ -1,11 +1,10 @@
 defmodule Jido.MCP.ResponseTest do
   use ExUnit.Case, async: true
 
-  alias Anubis.MCP.Response, as: MCPResponse
   alias Jido.MCP.Response
 
   test "normalizes successful response" do
-    raw = MCPResponse.from_json_rpc(%{"id" => "1", "result" => %{"tools" => []}})
+    raw = %{"tools" => []}
 
     assert {:ok, result} = Response.normalize(:demo, "tools/list", {:ok, raw})
     assert result.status == :ok
@@ -25,11 +24,7 @@ defmodule Jido.MCP.ResponseTest do
   end
 
   test "normalizes tool-level error response" do
-    raw =
-      MCPResponse.from_json_rpc(%{
-        "id" => "1",
-        "result" => %{"isError" => true, "message" => "boom"}
-      })
+    raw = %{"isError" => true, "message" => "boom"}
 
     assert {:error, error} = Response.normalize(:demo, "tools/call", {:ok, raw})
     assert error.type == :tool_error
@@ -99,12 +94,12 @@ defmodule Jido.MCP.ResponseTest do
     assert error.message =~ "reason"
   end
 
-  test "normalizes an invalid backend response without exposing its contents" do
+  test "normalizes an invalid client response without exposing its contents" do
     assert {:error, error} =
              Response.normalize(:demo, "tools/list", {:unexpected, "Bearer secret"})
 
-    assert error.message == "The MCP backend returned an invalid response"
-    assert error.details == :invalid_backend_response
+    assert error.message == "The MCP client returned an invalid response"
+    assert error.details == :invalid_client_response
     refute inspect(error) =~ "secret"
   end
 end

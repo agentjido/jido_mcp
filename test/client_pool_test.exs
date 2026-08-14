@@ -14,30 +14,18 @@ defmodule Jido.MCP.ClientPoolTest do
     def init(capabilities), do: {:ok, capabilities}
 
     @impl true
-    def handle_call(:get_server_capabilities, _from, [nil | rest]) do
-      {:reply, nil, rest}
+    def handle_call(:get_status, _from, status) when is_map(status) do
+      {:reply, {:ok, %{connection_status: :ready}}, status}
     end
 
-    def handle_call(:get_server_capabilities, _from, [capabilities | rest]) do
-      {:reply, capabilities, rest}
-    end
-
-    def handle_call(:get_server_capabilities, _from, capabilities) do
-      {:reply, capabilities, capabilities}
-    end
-
-    def handle_call(:await_ready, _from, [nil, capabilities | rest]) do
-      {:reply, :ok, [capabilities | rest]}
-    end
-
-    def handle_call(:await_ready, _from, capabilities) when is_map(capabilities) do
-      {:reply, :ok, capabilities}
-    end
-
-    def handle_call(:await_ready, _from, nil) do
+    def handle_call(:get_status, _from, nil) do
       Process.sleep(100)
       {:reply, :ok, nil}
     end
+  end
+
+  defmodule LocalHandler do
+    use ExMCP.Server.Handler
   end
 
   setup do
@@ -166,9 +154,12 @@ defmodule Jido.MCP.ClientPoolTest do
   end
 
   test "restarts tracked endpoints when transport ref is stale" do
+    server =
+      start_supervised!({ExMCP.Server.HandlerServer, handler: LocalHandler, transport: :beam})
+
     {:ok, endpoint} =
       Endpoint.new(:github, %{
-        transport: {:stdio, [command: "cat"]},
+        transport: {:beam, [server: server]},
         client_info: %{name: "my_app"}
       })
 
@@ -203,8 +194,8 @@ defmodule Jido.MCP.ClientPoolTest do
     end)
   end
 
-  test "await_ready waits until server capabilities are available" do
-    client = start_supervised!({ReadyClient, [nil, %{"tools" => %{}}]})
+  test "await_ready accepts a ready ExMCP client" do
+    client = start_supervised!({ReadyClient, %{}})
 
     assert :ok = ClientPool.await_ready(%{client: client}, 250)
   end

@@ -1,37 +1,15 @@
-defmodule Jido.MCP.Backend.ExMCPTest do
+defmodule Jido.MCP.ExMCPClientTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Jido.MCP.Backend.ExMCP, as: ExMCPBackend
   alias Jido.MCP.Endpoint
+  alias Jido.MCP.ExMCPClient
 
   setup :set_mimic_from_context
-
-  test "uses the application backend default when an endpoint does not select one" do
-    previous = Application.get_env(:jido_mcp, :default_backend)
-    Application.put_env(:jido_mcp, :default_backend, :ex_mcp)
-
-    on_exit(fn ->
-      if is_nil(previous) do
-        Application.delete_env(:jido_mcp, :default_backend)
-      else
-        Application.put_env(:jido_mcp, :default_backend, previous)
-      end
-    end)
-
-    assert {:ok, endpoint} =
-             Endpoint.new(:default_backend, %{
-               transport: {:stdio, command: "echo"},
-               client_info: %{name: "test"}
-             })
-
-    assert endpoint.backend == :ex_mcp
-  end
 
   test "maps the existing stdio endpoint shape to ExMCP" do
     assert {:ok, endpoint} =
              Endpoint.new(:stdio, %{
-               backend: :ex_mcp,
                transport:
                  {:stdio,
                   command: "node",
@@ -42,7 +20,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
                timeouts: %{request_ms: 1_234}
              })
 
-    assert {:ok, opts} = ExMCPBackend.client_options(endpoint, ref(:stdio_client))
+    assert {:ok, opts} = ExMCPClient.client_options(endpoint, ref(:stdio_client))
     assert opts[:transport] == :stdio
     assert opts[:command] == ["node", "server.js"]
     assert opts[:cd] == "/tmp"
@@ -53,7 +31,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
     assert opts[:retry_policy] == []
   end
 
-  test "keeps lifecycle and retry controls owned by the endpoint backend" do
+  test "keeps lifecycle and retry controls owned by the ExMCP client adapter" do
     for {option, value} <- [
           retry_policy: [max_attempts: 3],
           reconnect: true,
@@ -63,27 +41,25 @@ defmodule Jido.MCP.Backend.ExMCPTest do
         ] do
       assert {:ok, endpoint} =
                Endpoint.new(:protected, %{
-                 backend: :ex_mcp,
-                 backend_options: [{option, value}],
+                 client_options: [{option, value}],
                  transport: {:stdio, command: "echo"},
                  client_info: %{name: "test"}
                })
 
-      assert {:error, {:protected_backend_option, ^option}} =
-               ExMCPBackend.client_options(endpoint, ref(:protected_client))
+      assert {:error, {:protected_client_option, ^option}} =
+               ExMCPClient.client_options(endpoint, ref(:protected_client))
     end
   end
 
   test "allows an explicit ExMCP protocol mode without changing protected options" do
     assert {:ok, endpoint} =
              Endpoint.new(:modern, %{
-               backend: :ex_mcp,
-               backend_options: [protocol_mode: :prefer_modern],
+               client_options: [protocol_mode: :prefer_modern],
                transport: {:stdio, command: "echo"},
                client_info: %{name: "test"}
              })
 
-    assert {:ok, opts} = ExMCPBackend.client_options(endpoint, ref(:modern_client))
+    assert {:ok, opts} = ExMCPClient.client_options(endpoint, ref(:modern_client))
     assert opts[:protocol_mode] == :prefer_modern
     assert opts[:reconnect] == false
     assert opts[:retry_policy] == []
@@ -92,7 +68,6 @@ defmodule Jido.MCP.Backend.ExMCPTest do
   test "maps streamable HTTP options and keeps credential clients separate" do
     assert {:ok, first} =
              Endpoint.new(:first, %{
-               backend: :ex_mcp,
                transport:
                  {:streamable_http,
                   base_url: "https://mcp.example/mcp",
@@ -103,7 +78,6 @@ defmodule Jido.MCP.Backend.ExMCPTest do
 
     assert {:ok, second} =
              Endpoint.new(:second, %{
-               backend: :ex_mcp,
                transport:
                  {:streamable_http,
                   base_url: "https://mcp.example/mcp",
@@ -112,8 +86,8 @@ defmodule Jido.MCP.Backend.ExMCPTest do
                client_info: %{name: "test"}
              })
 
-    assert {:ok, first_opts} = ExMCPBackend.client_options(first, ref(:first_client))
-    assert {:ok, second_opts} = ExMCPBackend.client_options(second, ref(:second_client))
+    assert {:ok, first_opts} = ExMCPClient.client_options(first, ref(:first_client))
+    assert {:ok, second_opts} = ExMCPClient.client_options(second, ref(:second_client))
 
     assert first_opts[:transport] == :http
     assert first_opts[:url] == "https://mcp.example"
@@ -134,7 +108,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
     end)
 
     assert {:ok, %{"content" => []}} =
-             ExMCPBackend.call_tool(:client, "write", %{"value" => 1}, timeout: 200)
+             ExMCPClient.call_tool(:client, "write", %{"value" => 1}, timeout: 200)
 
     expect(ExMCP.Client, :call_tool, fn :client, "write", %{}, opts ->
       assert opts[:retry_safe] == true
@@ -143,7 +117,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
     end)
 
     assert {:ok, %{"content" => []}} =
-             ExMCPBackend.call_tool(:client, "write", %{},
+             ExMCPClient.call_tool(:client, "write", %{},
                retry_safe: true,
                idempotency_key: "operation-1"
              )
@@ -175,16 +149,16 @@ defmodule Jido.MCP.Backend.ExMCPTest do
       {:ok, %{"messages" => []}}
     end)
 
-    assert {:ok, %{"resources" => []}} = ExMCPBackend.list_resources(:client, [])
+    assert {:ok, %{"resources" => []}} = ExMCPClient.list_resources(:client, [])
 
     assert {:ok, %{"resourceTemplates" => []}} =
-             ExMCPBackend.list_resource_templates(:client, [])
+             ExMCPClient.list_resource_templates(:client, [])
 
     assert {:ok, %{"contents" => []}} =
-             ExMCPBackend.read_resource(:client, "test://resource", [])
+             ExMCPClient.read_resource(:client, "test://resource", [])
 
-    assert {:ok, %{"prompts" => []}} = ExMCPBackend.list_prompts(:client, [])
-    assert {:ok, %{"messages" => []}} = ExMCPBackend.get_prompt(:client, "greet", %{}, [])
+    assert {:ok, %{"prompts" => []}} = ExMCPClient.list_prompts(:client, [])
+    assert {:ok, %{"messages" => []}} = ExMCPClient.get_prompt(:client, "greet", %{}, [])
   end
 
   test "returns an explicit and sanitized outcome-unknown error" do
@@ -200,7 +174,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
        }}
     end)
 
-    assert {:error, error} = ExMCPBackend.call_tool(:client, "write", %{}, [])
+    assert {:error, error} = ExMCPClient.call_tool(:client, "write", %{}, [])
     assert error.reason == :outcome_unknown
     assert error.details == %{delivery: :unknown}
     refute inspect(error) =~ "secret"
@@ -208,7 +182,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
   end
 
   test "rejects invalid request timeouts before calling ExMCP" do
-    assert {:error, error} = ExMCPBackend.list_tools(:client, timeout: :infinity)
+    assert {:error, error} = ExMCPClient.list_tools(:client, timeout: :infinity)
     assert error.reason == :invalid_params
     assert error.details == %{field: :timeout}
   end
@@ -218,7 +192,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
       throw({:credential, "Bearer secret"})
     end)
 
-    assert {:error, thrown_error} = ExMCPBackend.list_tools(:client, [])
+    assert {:error, thrown_error} = ExMCPClient.list_tools(:client, [])
     assert thrown_error.reason == :request_failed
     refute inspect(thrown_error) =~ "secret"
 
@@ -226,16 +200,16 @@ defmodule Jido.MCP.Backend.ExMCPTest do
       {:error, %{"code" => "Bearer secret", "message" => "Bearer secret"}}
     end)
 
-    assert {:error, protocol_error} = ExMCPBackend.list_tools(:client, [])
+    assert {:error, protocol_error} = ExMCPClient.list_tools(:client, [])
     assert protocol_error.reason == :request_failed
     refute inspect(protocol_error) =~ "secret"
   end
 
   test "sanitizes client startup failures" do
-    assert ExMCPBackend.sanitize_start_error({:connection_error, %{token: "secret"}}) ==
+    assert ExMCPClient.sanitize_start_error({:connection_error, %{token: "secret"}}) ==
              :connection_failed
 
-    assert ExMCPBackend.sanitize_start_error({:shutdown, {:token, "secret"}}) ==
+    assert ExMCPClient.sanitize_start_error({:shutdown, {:token, "secret"}}) ==
              :client_start_failed
   end
 
@@ -249,7 +223,7 @@ defmodule Jido.MCP.Backend.ExMCPTest do
        }}
     end)
 
-    assert {:error, error} = ExMCPBackend.list_tools(:client, [])
+    assert {:error, error} = ExMCPClient.list_tools(:client, [])
     assert error.reason == :protocol_error
     assert error.details == %{code: -32_603}
     refute inspect(error) =~ "secret"
@@ -259,23 +233,18 @@ defmodule Jido.MCP.Backend.ExMCPTest do
   test "rejects ExMCP transport options that cannot map without changed behavior" do
     assert {:ok, query_endpoint} =
              Endpoint.new(:query, %{
-               backend: :ex_mcp,
                transport: {:streamable_http, url: "https://mcp.example/mcp?token=secret"},
                client_info: %{name: "test"}
              })
 
     assert {:error, {:unsupported_transport_option, :mcp_path_query}} =
-             ExMCPBackend.client_options(query_endpoint, ref(:query_client))
+             ExMCPClient.client_options(query_endpoint, ref(:query_client))
 
-    assert {:ok, sse_endpoint} =
+    assert {:error, {:unsupported_transport, :sse, :ex_mcp}} =
              Endpoint.new(:sse, %{
-               backend: :ex_mcp,
                transport: {:sse, base_url: "https://mcp.example", sse_path: "/sse"},
                client_info: %{name: "test"}
              })
-
-    assert {:error, {:unsupported_transport, :sse, :ex_mcp}} =
-             ExMCPBackend.client_options(sse_endpoint, ref(:sse_client))
   end
 
   test "rejects unsafe HTTP URL and header forms" do
@@ -300,12 +269,11 @@ defmodule Jido.MCP.Backend.ExMCPTest do
         ] do
       assert {:ok, endpoint} =
                Endpoint.new(id, %{
-                 backend: :ex_mcp,
                  transport: transport,
                  client_info: %{name: "test"}
                })
 
-      assert {:error, ^expected} = ExMCPBackend.client_options(endpoint, ref(id))
+      assert {:error, ^expected} = ExMCPClient.client_options(endpoint, ref(id))
     end
   end
 
@@ -321,12 +289,11 @@ defmodule Jido.MCP.Backend.ExMCPTest do
         ] do
       assert {:ok, endpoint} =
                Endpoint.new(id, %{
-                 backend: :ex_mcp,
                  transport: transport,
                  client_info: %{name: "test"}
                })
 
-      assert {:error, ^expected} = ExMCPBackend.client_options(endpoint, ref(id))
+      assert {:error, ^expected} = ExMCPClient.client_options(endpoint, ref(id))
     end
   end
 
@@ -338,7 +305,6 @@ defmodule Jido.MCP.Backend.ExMCPTest do
 
   defp ref(client) do
     %{
-      backend: ExMCPBackend,
       client: client,
       supervisor: :supervisor,
       transport: client

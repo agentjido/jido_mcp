@@ -1,16 +1,14 @@
 defmodule Jido.MCP.Response do
   @moduledoc """
-  Helpers for normalizing backend responses into stable Jido.MCP result contracts.
+  Helpers for normalizing ExMCP responses into stable Jido.MCP result contracts.
   """
-
-  alias Anubis.MCP.Response, as: MCPResponse
 
   @type ok_result :: %{
           status: :ok,
           endpoint: Jido.MCP.Endpoint.id(),
           method: String.t(),
           data: map(),
-          raw: MCPResponse.t() | map()
+          raw: map()
         }
 
   @type error_result :: %{
@@ -25,34 +23,9 @@ defmodule Jido.MCP.Response do
   @spec normalize(
           Jido.MCP.Endpoint.id(),
           String.t(),
-          {:ok, MCPResponse.t() | map()} | {:error, term()}
+          {:ok, map()} | {:error, term()}
         ) ::
           {:ok, ok_result()} | {:error, error_result()}
-  def normalize(endpoint_id, method, {:ok, %MCPResponse{} = response}) do
-    data = MCPResponse.unwrap(response)
-
-    if MCPResponse.error?(response) do
-      {:error,
-       %{
-         status: :error,
-         endpoint: endpoint_id,
-         method: method,
-         type: :tool_error,
-         message: extract_error_message(data),
-         details: data
-       }}
-    else
-      {:ok,
-       %{
-         status: :ok,
-         endpoint: endpoint_id,
-         method: method,
-         data: data,
-         raw: response
-       }}
-    end
-  end
-
   def normalize(endpoint_id, method, {:ok, response}) when is_map(response) do
     if tool_error?(response) do
       {:error,
@@ -95,8 +68,8 @@ defmodule Jido.MCP.Response do
        endpoint: endpoint_id,
        method: method,
        type: :transport,
-       message: "The MCP backend returned an invalid response",
-       details: :invalid_backend_response
+       message: "The MCP client returned an invalid response",
+       details: :invalid_client_response
      }}
   end
 

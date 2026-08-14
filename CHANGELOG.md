@@ -6,10 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Added an endpoint-selectable ExMCP client backend for stdio, Streamable HTTP,
-  and BEAM-local transports. Anubis stays the application default.
-- Added a client backend behaviour so host applications can supply another
-  backend without changing the public `Jido.MCP` API.
+- Added ExMCP client support for stdio, Streamable HTTP, and BEAM-local
+  transports.
+- Added an ExMCP server implementation behind the existing
+  `use Jido.MCP.Server` explicit allowlist.
 - Added ExMCP integration tests for tools, resources, prompts, credential
   isolation, cancellation, timeout, and subprocess cleanup.
 - Added `mcp.endpoint.default.set` route and `Jido.MCP.Actions.SetDefaultEndpoint` for runtime default endpoint updates.
@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Pinned the qualified ExMCP dependency to `1.0.0-rc.8`.
+- Replaced the Anubis client and server protocol runtime with ExMCP.
 - ExMCP tool calls disable normal request retries and use safe-only HTTP stream
   recovery. Uncertain delivery returns an explicit outcome-unknown error.
 - ExMCP transport and protocol errors are sanitized before they enter public
@@ -31,9 +32,15 @@ All notable changes to this project will be documented in this file.
   conflict, and Jido AI proxy generation does not create atoms from string ids.
 - MCP plugin allowlists now support `allowed_endpoints: :all`.
 - Removed implicit MCP core -> MCPAI runtime sync coupling; host apps now orchestrate lifecycle + sync explicitly through plugin signals.
-- Endpoint calls now wait on `Anubis.Client.await_ready/2` before executing.
+- Endpoint calls now wait for ExMCP client readiness before they execute.
 - `Jido.MCP.refresh_endpoint/1` now refreshes lifecycle only and no longer performs `tools/list`.
 - Removed MCPAI orchestration shims from `Jido.MCP`; runtime sync is triggered via MCPAI plugin signals.
+
+### Removed
+
+- Removed the `anubis_mcp` dependency and the Anubis-specific stdio, Finch,
+  Peri, response, client pool, and server bridge code.
+- Removed the deprecated `{:sse, ...}` client transport. Use Streamable HTTP.
 
 ## [0.1.1] - 2026-02-25
 
