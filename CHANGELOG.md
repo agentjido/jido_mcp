@@ -6,12 +6,6 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Added ExMCP client support for stdio, Streamable HTTP, and BEAM-local
-  transports.
-- Added an ExMCP server implementation behind the existing
-  `use Jido.MCP.Server` explicit allowlist.
-- Added ExMCP integration tests for tools, resources, prompts, credential
-  isolation, cancellation, timeout, and subprocess cleanup.
 - Added `mcp.endpoint.default.set` route and `Jido.MCP.Actions.SetDefaultEndpoint` for runtime default endpoint updates.
 - Added runtime endpoint unregistration APIs: `Jido.MCP.unregister_endpoint/1` and `Jido.MCP.ClientPool.unregister_endpoint/1`.
 - Added `Jido.MCP.await_endpoint_ready/2` public readiness API.
@@ -19,28 +13,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Pinned the qualified ExMCP dependency to `1.0.0-rc.8`.
-- Replaced the Anubis client and server protocol runtime with ExMCP.
-- ExMCP tool calls disable normal request retries and use safe-only HTTP stream
-  recovery. Uncertain delivery returns an explicit outcome-unknown error.
-- ExMCP transport and protocol errors are sanitized before they enter public
-  response envelopes.
-- Runtime registration keeps external string endpoint identifiers as strings
-  and does not convert them to atoms.
-- Hardened ExMCP startup, URL, header, stdio, timeout, retry, lifecycle, and
-  error boundaries. Atom and string endpoint ids with the same text now
-  conflict, and Jido AI proxy generation does not create atoms from string ids.
 - MCP plugin allowlists now support `allowed_endpoints: :all`.
 - Removed implicit MCP core -> MCPAI runtime sync coupling; host apps now orchestrate lifecycle + sync explicitly through plugin signals.
-- Endpoint calls now wait for ExMCP client readiness before they execute.
+- Endpoint calls now wait on `Anubis.Client.await_ready/2` before executing.
 - `Jido.MCP.refresh_endpoint/1` now refreshes lifecycle only and no longer performs `tools/list`.
 - Removed MCPAI orchestration shims from `Jido.MCP`; runtime sync is triggered via MCPAI plugin signals.
-
-### Removed
-
-- Removed the `anubis_mcp` dependency and the Anubis-specific stdio, Finch,
-  Peri, response, client pool, and server bridge code.
-- Removed the deprecated `{:sse, ...}` client transport. Use Streamable HTTP.
 
 ## [0.1.1] - 2026-02-25
 
