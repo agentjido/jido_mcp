@@ -33,6 +33,17 @@ defmodule Jido.MCP.Server.RuntimeTest do
     end
   end
 
+  defmodule FailureEnvelopeAction do
+    use Jido.Action,
+      name: "failure_envelope",
+      schema: []
+
+    @impl true
+    def run(_params, _context) do
+      {:ok, %{ok: false, error: %{code: :action_not_allowed, message: "Access is denied."}}}
+    end
+  end
+
   defmodule OpenInputAction do
     use Jido.Action,
       name: "open_input",
@@ -155,6 +166,33 @@ defmodule Jido.MCP.Server.RuntimeTest do
              request_is_nil: true,
              transport: %{}
            }
+  end
+
+  test "marks a structured failure envelope as an MCP tool error" do
+    state = %{assigns: %{}}
+
+    assert {:ok, response, ^state} =
+             Runtime.handle_tool_call(
+               [FailureEnvelopeAction],
+               "failure_envelope",
+               %{},
+               state,
+               AllowAllServer
+             )
+
+    assert response.structuredContent == %{
+             ok: false,
+             error: %{code: :action_not_allowed, message: "Access is denied."}
+           }
+
+    assert [%{type: "text", text: text}] = response.content
+
+    assert Jason.decode!(text) == %{
+             "ok" => false,
+             "error" => %{"code" => "action_not_allowed", "message" => "Access is denied."}
+           }
+
+    assert response.isError == true
   end
 
   test "handles resource read" do

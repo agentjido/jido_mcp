@@ -207,6 +207,15 @@ defmodule Jido.MCP.Server.Runtime do
       content: [%{type: "text", text: encoded_text(output)}],
       structuredContent: output
     }
+    |> maybe_mark_tool_error(output)
+  end
+
+  # A structured tool envelope can preserve product error data and still use
+  # the MCP result error signal. Hosts use this for `{ok: false, error: ...}`.
+  defp maybe_mark_tool_error(response, output) do
+    if Map.get(output, :ok, Map.get(output, "ok")) == false,
+      do: Map.put(response, :isError, true),
+      else: response
   end
 
   defp tool_error_response do
