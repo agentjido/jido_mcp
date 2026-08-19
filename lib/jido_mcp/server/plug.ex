@@ -148,6 +148,7 @@ defmodule Jido.MCP.Server.Plug do
             |> call_ex_mcp(opts, request, context, reservation)
           else
             {:error, :session_limit_exceeded} -> session_limit_response(conn)
+            {:error, :session_forbidden} -> forbidden_session_response(conn)
             {:error, :session_expired} -> unknown_session_response(conn)
           end
 
@@ -254,8 +255,7 @@ defmodule Jido.MCP.Server.Plug do
               {:error, :session_expired}
           end
         else
-          invalidate_revised_session(opts, request, context)
-          {:error, :session_expired}
+          {:error, classify_identity_mismatch(opts, request, context)}
         end
 
       true ->
@@ -317,29 +317,47 @@ defmodule Jido.MCP.Server.Plug do
 
   defp identity(context), do: {context.principal_id, context.tenant_id}
 
-  defp invalidate_revised_session(opts, %{session_id: session_id}, context) do
-    with family_id when is_binary(family_id) <- context.session_family_id,
-         {:ok, %{identity: {prior_principal_id, prior_tenant_id}, session_family_id: ^family_id}} <-
-           SessionLimiter.session(opts.server, session_id),
-         true <- prior_tenant_id == context.tenant_id,
-         true <- prior_principal_id != context.principal_id,
-         true <- session_bound_to_identity?(session_id, {prior_principal_id, prior_tenant_id}) do
-      ExMCP.SessionManager.terminate_session(session_id)
-      SessionLimiter.remove(opts.server, session_id, {prior_principal_id, prior_tenant_id})
+  defp classify_identity_mismatch(opts, %{session_id: session_id}, context) do
+    with {:ok, %{identity: prior_identity} = session} <-
+           SessionLimiter.session(opts.server, session_id) do
+      if session_bound_to_identity?(session_id, prior_identity) do
+        if same_family_revision?(session, context) do
+          ExMCP.SessionManager.terminate_session(session_id)
+          SessionLimiter.remove(opts.server, session_id, prior_identity)
 
-      emit_lifecycle(opts, %{
-        event: :session_invalidated,
-        session_id: session_id,
-        reason: :revision_changed
-      })
+          emit_lifecycle(opts, %{
+            event: :session_invalidated,
+            session_id: session_id,
+            reason: :revision_changed
+          })
+
+          :session_expired
+        else
+          :session_forbidden
+        end
+      else
+        SessionLimiter.remove(opts.server, session_id, prior_identity)
+        :session_expired
+      end
     else
-      _other -> :ok
+      _other -> :session_expired
     end
   rescue
-    _exception -> :ok
+    _exception -> :session_expired
   catch
-    _kind, _reason -> :ok
+    _kind, _reason -> :session_expired
   end
+
+  defp same_family_revision?(
+         %{identity: {prior_principal_id, prior_tenant_id}, session_family_id: family_id},
+         context
+       )
+       when is_binary(family_id) do
+    family_id == context.session_family_id and prior_tenant_id == context.tenant_id and
+      prior_principal_id != context.principal_id
+  end
+
+  defp same_family_revision?(_session, _context), do: false
 
   defp session_bound_to_identity?(session_id, {principal_id, tenant_id}) do
     ExMCP.SessionManager.ensure_session(session_id, %{
@@ -559,6 +577,12 @@ defmodule Jido.MCP.Server.Plug do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(404, Jason.encode!(%{"error" => %{"message" => "Session not found"}}))
+  end
+
+  defp forbidden_session_response(conn) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(403, Jason.encode!(%{"error" => %{"message" => "MCP request forbidden"}}))
   end
 
   defp failed_response(conn) do

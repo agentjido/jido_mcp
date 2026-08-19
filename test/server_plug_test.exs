@@ -638,7 +638,10 @@ defmodule Jido.MCP.Server.PlugTest do
       |> put_req_header("mcp-session-id", protected_session_id)
       |> ServerPlug.call(opts)
 
-    assert guessed.status == 404
+    assert guessed.status == 403
+
+    assert guessed.resp_body ==
+             Jason.encode!(%{"error" => %{"message" => "MCP request forbidden"}})
 
     still_protected =
       conn(:post, "/mcp", Jason.encode!(request("tools/list", 455)))
@@ -650,6 +653,17 @@ defmodule Jido.MCP.Server.PlugTest do
       |> ServerPlug.call(opts)
 
     assert still_protected.status == 200
+
+    untracked =
+      conn(:post, "/mcp", Jason.encode!(request("tools/list", 456)))
+      |> with_host("allowed.example")
+      |> put_req_header("x-principal", "grant-other:rev2")
+      |> put_req_header("x-tenant", "tenant-a")
+      |> put_req_header("x-family", "grant-other")
+      |> put_req_header("mcp-session-id", "unknown-session-id")
+      |> ServerPlug.call(opts)
+
+    assert untracked.status == 404
   end
 
   test "invalidates a revoked trusted family without a current principal", %{opts: _opts} do
