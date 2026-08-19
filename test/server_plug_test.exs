@@ -445,12 +445,13 @@ defmodule Jido.MCP.Server.PlugTest do
     assert {:ok, token, []} =
              SessionLimiter.reserve(Server, identity, nil, 1, nil, opts.reservation_ttl_ms)
 
-    advance_limiter_clock!(opts.reservation_ttl_ms - 1)
+    elapsed_ms = div(opts.reservation_ttl_ms, 2)
+    advance_limiter_clock!(elapsed_ms)
 
     assert {:error, :session_limit_exceeded, []} =
              SessionLimiter.reserve(Server, identity, nil, 1, nil, opts.reservation_ttl_ms)
 
-    advance_limiter_clock!(1)
+    advance_limiter_clock!(opts.reservation_ttl_ms - elapsed_ms)
 
     assert {:ok, _replacement, []} =
              SessionLimiter.reserve(Server, identity, nil, 1, nil, opts.reservation_ttl_ms)
