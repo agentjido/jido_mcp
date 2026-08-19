@@ -137,7 +137,9 @@ forward "/mcp", Jido.MCP.Server.Plug,
       allowed_origins: ["https://app.example.com"],
       body_bytes: 1_000_000,
       response_bytes: 1_000_000,
-      handler_deadline_ms: 10_000
+      handler_deadline_ms: 10_000,
+      max_sessions_per_identity: 8,
+      idle_session_ttl_ms: 900_000
     ]
   )
 ```
@@ -149,6 +151,35 @@ to the stable identity values, and DELETE removes it. The adapter does not put
 the Plug connection, request headers, bearer tokens, or connector credentials
 in a Jido action context. Optional lifecycle hooks receive redacted request
 and session events with a bounded callback deadline.
+
+`max_sessions_per_identity` atomically limits sessions for each
+principal-and-tenant pair. `idle_session_ttl_ms` closes idle tracked sessions.
+You can set either limit independently. Failed and abandoned initialize
+reservations release their admission slot.
+
+To reject and safely close the current session, return this host result:
+
+```elixir
+{:error,
+ %{invalidate_session: %{principal_id: principal_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+When no current principal is available, a trusted prior family can be used:
+
+```elixir
+{:error,
+ %{invalidate_session: %{session_family_id: grant_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+The adapter checks this identity against the session binding before it closes
+the session. The family form checks the tracked prior exact identity first.
+Include a stable `session_family_id` in successful contexts to
+close a prior revision of one grant: a changed principal in the same tenant and
+family emits `:session_invalidated` with `:revision_changed`. A different
+family cannot close a guessed session ID. Other rejections use the normal
+generic response.
 
 `Jido.MCP.Server.server_children/2` no longer returns an Anubis registry child.
 It returns the allowlisted server child only. `:streamable_http` remains a Jido

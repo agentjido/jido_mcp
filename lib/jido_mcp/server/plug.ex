@@ -38,20 +38,27 @@ defmodule Jido.MCP.Server.Plug do
 
   import Plug.Conn
 
+  alias Jido.MCP.Server.SessionLimiter
+
   @default_limits %{
     allowed_hosts: :any,
     allowed_origins: [],
     body_bytes: 1_000_000,
     response_bytes: 1_000_000,
-    handler_deadline_ms: 10_000
+    handler_deadline_ms: 10_000,
+    max_sessions_per_identity: nil,
+    idle_session_ttl_ms: nil
   }
+
+  @reservation_margin_ms 1_000
 
   @secret_key_fragments ["authorization", "bearer", "credential", "password", "secret", "token"]
 
   @type host_context :: %{
           required(:assigns) => map(),
           optional(:principal_id) => String.t() | nil,
-          optional(:tenant_id) => String.t() | nil
+          optional(:tenant_id) => String.t() | nil,
+          optional(:session_family_id) => String.t() | nil
         }
 
   @doc """
@@ -112,7 +119,11 @@ defmodule Jido.MCP.Server.Plug do
           request_context: Keyword.fetch!(opts, :request_context),
           lifecycle: Keyword.get(opts, :lifecycle),
           lifecycle_timeout_ms: Keyword.get(opts, :lifecycle_timeout_ms, 1_000),
-          response_bytes: limits.response_bytes
+          response_bytes: limits.response_bytes,
+          max_sessions_per_identity: limits.max_sessions_per_identity,
+          idle_session_ttl_ms: limits.idle_session_ttl_ms,
+          reservation_ttl_ms: limits.handler_deadline_ms + @reservation_margin_ms,
+          server: server
         }
 
       {:error, %{details: %{field: field}}} ->
@@ -128,10 +139,27 @@ defmodule Jido.MCP.Server.Plug do
 
       case resolve_request_context(opts.request_context, conn, request) do
         {:ok, context} ->
-          conn
-          |> assign(:jido_mcp_host_context, context)
-          |> register_before_send(&limit_response(&1, opts.response_bytes))
-          |> call_ex_mcp(opts, request, context)
+          with {:ok, reservation} <- admit_session(opts, request, context) do
+            conn
+            |> assign(:jido_mcp_host_context, context)
+            |> register_before_send(
+              &limit_response(&1, opts.response_bytes, opts.server, identity(context))
+            )
+            |> call_ex_mcp(opts, request, context, reservation)
+          else
+            {:error, :session_limit_exceeded} -> session_limit_response(conn)
+            {:error, :session_expired} -> unknown_session_response(conn)
+          end
+
+        {:error, {:invalidate_session, identity, reason}} ->
+          invalidate_session(opts, request, identity, reason)
+          emit_lifecycle(opts, %{event: :request_rejected, request: request, reason: reason})
+          rejected_response(conn)
+
+        {:error, {:invalidate_session_family, family, reason}} ->
+          invalidate_session_family(opts, request, family, reason)
+          emit_lifecycle(opts, %{event: :request_rejected, request: request, reason: reason})
+          rejected_response(conn)
 
         {:error, _reason} ->
           emit_lifecycle(opts, %{event: :request_rejected, request: request})
@@ -144,8 +172,10 @@ defmodule Jido.MCP.Server.Plug do
     end
   end
 
-  defp call_ex_mcp(conn, opts, request, context) do
+  defp call_ex_mcp(conn, opts, request, context, reservation) do
     result = ExMCP.HttpPlug.call(conn, opts.ex_mcp_opts)
+
+    finalize_admission(opts, request, context, reservation, result)
 
     if request.method == "DELETE" and result.status == 204 do
       emit_lifecycle(opts, %{
@@ -167,13 +197,199 @@ defmodule Jido.MCP.Server.Plug do
     result
   rescue
     _exception ->
+      release_reservation(reservation)
       emit_lifecycle(opts, %{event: :request_failed, request: request})
       failed_response(conn)
   catch
     _kind, _reason ->
+      release_reservation(reservation)
       emit_lifecycle(opts, %{event: :request_failed, request: request})
       failed_response(conn)
   end
+
+  defp admit_session(
+         %{max_sessions_per_identity: nil, idle_session_ttl_ms: nil},
+         _request,
+         %{session_family_id: nil}
+       ),
+       do: {:ok, nil}
+
+  defp admit_session(opts, request, context) do
+    identity = identity(context)
+
+    cond do
+      request.method == "POST" and is_nil(request.session_id) ->
+        remove_stale_sessions(opts, identity)
+
+        case SessionLimiter.reserve(
+               opts.server,
+               identity,
+               context.session_family_id,
+               opts.max_sessions_per_identity,
+               opts.idle_session_ttl_ms,
+               opts.reservation_ttl_ms
+             ) do
+          {:ok, token, expired} ->
+            terminate_sessions(expired)
+            {:ok, {:reservation, token}}
+
+          {:error, :session_limit_exceeded, expired} ->
+            terminate_sessions(expired)
+            {:error, :session_limit_exceeded}
+        end
+
+      is_binary(request.session_id) ->
+        if session_bound_to_identity?(request.session_id, identity) do
+          case SessionLimiter.touch(
+                 opts.server,
+                 request.session_id,
+                 identity
+               ) do
+            {:ok, expired} ->
+              terminate_sessions(expired)
+              {:ok, nil}
+
+            {:error, expired} ->
+              terminate_sessions([request.session_id | expired])
+              {:error, :session_expired}
+          end
+        else
+          invalidate_revised_session(opts, request, context)
+          {:error, :session_expired}
+        end
+
+      true ->
+        {:ok, nil}
+    end
+  end
+
+  defp finalize_admission(opts, request, context, nil, result) do
+    if request.method == "DELETE" and result.status == 204 do
+      SessionLimiter.remove(opts.server, request.session_id, identity(context))
+    end
+  end
+
+  defp finalize_admission(opts, _request, context, {:reservation, token}, result) do
+    case get_resp_header(result, "mcp-session-id") do
+      [session_id | _rest] when result.status in 200..299 ->
+        if session_bound_to_identity?(session_id, identity(context)) and
+             SessionLimiter.bind(token, session_id) == :ok do
+          emit_lifecycle(opts, %{
+            event: :session_created,
+            session_id: session_id,
+            reason: :initialized,
+            identity: identity(context)
+          })
+        else
+          SessionLimiter.release(token)
+          ExMCP.SessionManager.terminate_session(session_id)
+        end
+
+      _ ->
+        SessionLimiter.release(token)
+    end
+  end
+
+  defp release_reservation({:reservation, token}), do: SessionLimiter.release(token)
+  defp release_reservation(_reservation), do: :ok
+
+  defp terminate_sessions(session_ids) do
+    Enum.each(session_ids, fn session_id ->
+      try do
+        ExMCP.SessionManager.terminate_session(session_id)
+      rescue
+        _exception -> :ok
+      catch
+        _kind, _reason -> :ok
+      end
+    end)
+  end
+
+  defp remove_stale_sessions(opts, identity) do
+    opts.server
+    |> SessionLimiter.sessions(identity)
+    |> Enum.each(fn {session_id, %{identity: session_identity}} ->
+      unless session_bound_to_identity?(session_id, session_identity) do
+        SessionLimiter.remove(opts.server, session_id, session_identity)
+      end
+    end)
+  end
+
+  defp identity(context), do: {context.principal_id, context.tenant_id}
+
+  defp invalidate_revised_session(opts, %{session_id: session_id}, context) do
+    with family_id when is_binary(family_id) <- context.session_family_id,
+         {:ok, %{identity: {prior_principal_id, prior_tenant_id}, session_family_id: ^family_id}} <-
+           SessionLimiter.session(opts.server, session_id),
+         true <- prior_tenant_id == context.tenant_id,
+         true <- prior_principal_id != context.principal_id,
+         true <- session_bound_to_identity?(session_id, {prior_principal_id, prior_tenant_id}) do
+      ExMCP.SessionManager.terminate_session(session_id)
+      SessionLimiter.remove(opts.server, session_id, {prior_principal_id, prior_tenant_id})
+
+      emit_lifecycle(opts, %{
+        event: :session_invalidated,
+        session_id: session_id,
+        reason: :revision_changed
+      })
+    else
+      _other -> :ok
+    end
+  rescue
+    _exception -> :ok
+  catch
+    _kind, _reason -> :ok
+  end
+
+  defp session_bound_to_identity?(session_id, {principal_id, tenant_id}) do
+    ExMCP.SessionManager.ensure_session(session_id, %{
+      principal_id: principal_id,
+      tenant_id: tenant_id
+    }) == :ok
+  rescue
+    _exception -> false
+  catch
+    _kind, _reason -> false
+  end
+
+  defp invalidate_session(opts, %{session_id: session_id}, {principal_id, tenant_id}, reason)
+       when is_binary(session_id) do
+    metadata = %{principal_id: principal_id, tenant_id: tenant_id}
+
+    if ExMCP.SessionManager.ensure_session(session_id, metadata) == :ok do
+      ExMCP.SessionManager.terminate_session(session_id)
+      SessionLimiter.remove(opts.server, session_id, {principal_id, tenant_id})
+      emit_lifecycle(opts, %{event: :session_invalidated, session_id: session_id, reason: reason})
+    end
+  rescue
+    _exception -> :ok
+  catch
+    _kind, _reason -> :ok
+  end
+
+  defp invalidate_session(_opts, _request, _identity, _reason), do: :ok
+
+  defp invalidate_session_family(opts, %{session_id: session_id}, {family_id, tenant_id}, reason)
+       when is_binary(session_id) do
+    with {:ok,
+          %{
+            identity: {prior_principal_id, ^tenant_id},
+            session_family_id: ^family_id
+          }} <- SessionLimiter.session(opts.server, session_id),
+         true <- session_bound_to_identity?(session_id, {prior_principal_id, tenant_id}) do
+      ExMCP.SessionManager.terminate_session(session_id)
+      SessionLimiter.remove(opts.server, session_id, {prior_principal_id, tenant_id})
+      emit_lifecycle(opts, %{event: :session_invalidated, session_id: session_id, reason: reason})
+    else
+      _other -> :ok
+    end
+  rescue
+    _exception -> :ok
+  catch
+    _kind, _reason -> :ok
+  end
+
+  defp invalidate_session_family(_opts, _request, _family, _reason), do: :ok
 
   defp handler_opts(conn, _request) do
     context = Map.fetch!(conn.assigns, :jido_mcp_host_context)
@@ -207,20 +423,60 @@ defmodule Jido.MCP.Server.Plug do
 
   defp normalize_host_context({:ok, context}), do: normalize_host_context(context)
 
+  defp normalize_host_context(
+         {:error,
+          %{
+            invalidate_session: %{principal_id: principal_id, tenant_id: tenant_id},
+            reason: reason
+          }}
+       )
+       when is_binary(principal_id) and is_binary(tenant_id) do
+    {:error,
+     {:invalidate_session, {principal_id, tenant_id}, normalize_invalidation_reason(reason)}}
+  end
+
+  defp normalize_host_context(
+         {:error,
+          %{
+            invalidate_session: %{session_family_id: family_id, tenant_id: tenant_id},
+            reason: reason
+          }}
+       )
+       when is_binary(family_id) and is_binary(tenant_id) do
+    {:error,
+     {:invalidate_session_family, {family_id, tenant_id}, normalize_invalidation_reason(reason)}}
+  end
+
+  defp normalize_host_context({:error, _reason}), do: {:error, :request_context_rejected}
+
   defp normalize_host_context(%{} = context) do
     raw_assigns = Map.get(context, :assigns, %{})
     assigns = sanitize_assigns(raw_assigns)
     principal_id = Map.get(context, :principal_id)
     tenant_id = Map.get(context, :tenant_id)
+    session_family_id = Map.get(context, :session_family_id)
 
-    if is_map(raw_assigns) and valid_identity?(principal_id) and valid_identity?(tenant_id) do
-      {:ok, %{assigns: assigns, principal_id: principal_id, tenant_id: tenant_id}}
+    if is_map(raw_assigns) and valid_identity?(principal_id) and valid_identity?(tenant_id) and
+         valid_identity?(session_family_id) do
+      {:ok,
+       %{
+         assigns: assigns,
+         principal_id: principal_id,
+         tenant_id: tenant_id,
+         session_family_id: session_family_id
+       }}
     else
       {:error, :invalid_request_context}
     end
   end
 
   defp normalize_host_context(_other), do: {:error, :invalid_request_context}
+
+  defp normalize_invalidation_reason(reason)
+       when reason in [:revoked, :expired, :revision_changed],
+       do: reason
+
+  defp normalize_invalidation_reason(_reason), do: :authorization_changed
 
   defp valid_identity?(nil), do: true
   defp valid_identity?(identity), do: is_binary(identity) and byte_size(identity) in 1..512
@@ -247,9 +503,11 @@ defmodule Jido.MCP.Server.Plug do
 
   defp secret_key?(_key), do: false
 
-  defp limit_response(conn, max_bytes) do
+  defp limit_response(conn, max_bytes), do: limit_response(conn, max_bytes, nil, nil)
+
+  defp limit_response(conn, max_bytes, server, identity) do
     if byte_size(conn.resp_body || "") > max_bytes do
-      terminate_response_session(conn)
+      terminate_response_session(conn, server, identity)
 
       conn
       |> delete_resp_header("mcp-session-id")
@@ -260,10 +518,11 @@ defmodule Jido.MCP.Server.Plug do
     end
   end
 
-  defp terminate_response_session(conn) do
+  defp terminate_response_session(conn, server, identity) do
     case get_resp_header(conn, "mcp-session-id") do
       [session_id | _rest] ->
         ExMCP.SessionManager.terminate_session(session_id)
+        if server, do: SessionLimiter.remove(server, session_id, identity)
         :ok
 
       [] ->
@@ -287,6 +546,19 @@ defmodule Jido.MCP.Server.Plug do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(401, Jason.encode!(%{"error" => %{"message" => "MCP request rejected"}}))
+  end
+
+  defp session_limit_response(conn) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> put_resp_header("retry-after", "1")
+    |> send_resp(429, Jason.encode!(%{"error" => %{"message" => "MCP session limit reached"}}))
+  end
+
+  defp unknown_session_response(conn) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(404, Jason.encode!(%{"error" => %{"message" => "Session not found"}}))
   end
 
   defp failed_response(conn) do
@@ -374,7 +646,9 @@ defmodule Jido.MCP.Server.Plug do
              :ok <- validate_allowed_origins(normalized.allowed_origins),
              :ok <- validate_positive(normalized.body_bytes, :limits),
              :ok <- validate_positive(normalized.response_bytes, :limits),
-             :ok <- validate_positive(normalized.handler_deadline_ms, :limits) do
+             :ok <- validate_positive(normalized.handler_deadline_ms, :limits),
+             :ok <- validate_optional_positive(normalized.max_sessions_per_identity),
+             :ok <- validate_optional_positive(normalized.idle_session_ttl_ms) do
           {:ok, normalized}
         end
       else
@@ -405,6 +679,10 @@ defmodule Jido.MCP.Server.Plug do
 
   defp validate_positive(value, _field) when is_integer(value) and value > 0, do: :ok
   defp validate_positive(_value, field), do: invalid_options(field)
+
+  defp validate_optional_positive(nil), do: :ok
+  defp validate_optional_positive(value) when is_integer(value) and value > 0, do: :ok
+  defp validate_optional_positive(_value), do: invalid_options(:limits)
 
   defp invalid_options(field), do: {:error, %{reason: :invalid_options, details: %{field: field}}}
 end

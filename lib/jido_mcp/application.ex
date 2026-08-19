@@ -9,6 +9,7 @@ defmodule Jido.MCP.Application do
       {Registry, keys: :unique, name: Jido.MCP.Registry},
       {DynamicSupervisor, strategy: :one_for_one, name: Jido.MCP.ClientSupervisor},
       Jido.MCP.ClientPool,
+      Jido.MCP.Server.SessionLimiter,
       Jido.MCP.JidoAI.ProxyRegistry
     ]
 

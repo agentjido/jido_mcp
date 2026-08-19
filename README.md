@@ -314,7 +314,9 @@ forward "/mcp", Jido.MCP.Server.Plug,
       allowed_origins: ["https://app.example.com"],
       body_bytes: 1_000_000,
       response_bytes: 1_000_000,
-      handler_deadline_ms: 10_000
+      handler_deadline_ms: 10_000,
+      max_sessions_per_identity: 8,
+      idle_session_ttl_ms: 900_000
     ]
   )
 ```
@@ -326,6 +328,40 @@ assign keys that name bearer, authorization, credential, password, secret, or
 token values. It never passes the Plug connection or request headers to a Jido
 action. ExMCP binds a session to the principal and tenant values, and DELETE
 terminates that session.
+
+`max_sessions_per_identity` atomically limits sessions for one
+principal-and-tenant pair. `idle_session_ttl_ms` closes a tracked session after
+its idle period. You can set either limit independently. A failed initialize
+releases its admission reservation; an abandoned reservation also has a bounded
+lifetime. Lifecycle events include redacted `:session_created`,
+`:session_deleted`, and `:session_invalidated` events. An invalidated event
+contains a safe reason such as `:revoked`, `:expired`, or `:revision_changed`.
+
+To reject a request and invalidate its current session, return this shape from
+`request_context`:
+
+```elixir
+{:error,
+ %{invalidate_session: %{principal_id: principal_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+If the current credential has no usable principal, it can instead target a
+trusted prior grant family:
+
+```elixir
+{:error,
+ %{invalidate_session: %{session_family_id: grant_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+The adapter verifies that the supplied identity matches the session before it
+closes the session. The family form first verifies the tracked prior exact
+identity. To close an earlier revision of one grant, include a stable
+`session_family_id` in each successful host context. A changed principal in the
+same tenant and family closes the old session with `:revision_changed`. A
+different family cannot close it. Other rejected requests keep the generic
+rejection body.
 
 Use `lifecycle: fn event -> ... end` for bounded, redacted request-finished and
 session-deleted events. Set `lifecycle_timeout_ms` when the default 1 second is
