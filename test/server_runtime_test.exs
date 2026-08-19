@@ -195,6 +195,26 @@ defmodule Jido.MCP.Server.RuntimeTest do
     assert response.isError == true
   end
 
+  test "loads a published action before a direct tool call" do
+    action = Jido.MCP.Actions.ListTools
+    :code.purge(action)
+    :code.delete(action)
+    refute Code.loaded?(action)
+
+    state = %{assigns: %{}}
+
+    assert {:ok, %{isError: true}, ^state} =
+             Runtime.handle_tool_call(
+               [action],
+               "mcp_tools_list",
+               %{},
+               state,
+               AllowAllServer
+             )
+
+    assert Code.loaded?(action)
+  end
+
   test "handles resource read" do
     state = %{assigns: %{}}
 

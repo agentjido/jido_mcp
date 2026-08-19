@@ -195,7 +195,8 @@ defmodule Jido.MCP.Server.Runtime do
   defp find_module(modules, function, value) do
     case Enum.find(
            modules,
-           &(function_exported?(&1, function, 0) and apply(&1, function, []) == value)
+           &(Code.ensure_loaded?(&1) and function_exported?(&1, function, 0) and
+               apply(&1, function, []) == value)
          ) do
       nil -> {:error, :not_found}
       module -> {:ok, module}
