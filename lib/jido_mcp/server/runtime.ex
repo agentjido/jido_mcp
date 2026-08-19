@@ -275,10 +275,22 @@ defmodule Jido.MCP.Server.Runtime do
 
   defp action_input_schema(module) do
     module.schema()
-    |> Schema.to_json_schema(strict: true)
+    |> Schema.to_json_schema()
+    |> strict_tool_input()
   rescue
     _exception -> %{"type" => "object", "properties" => %{}, "required" => []}
   end
+
+  # Tool arguments are always closed at the root. Nested schemas keep the
+  # module-defined JSON Schema semantics, including intentionally open objects.
+  defp strict_tool_input(%{type: :object} = schema),
+    do: Map.put(schema, :additionalProperties, false)
+
+  defp strict_tool_input(%{"type" => "object"} = schema),
+    do: Map.put(schema, "additionalProperties", false)
+
+  defp strict_tool_input(schema),
+    do: Map.put(schema, "additionalProperties", false)
 
   defp maybe_description(module) do
     if function_exported?(module, :description, 0), do: module.description(), else: nil

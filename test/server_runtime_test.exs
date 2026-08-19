@@ -33,6 +33,27 @@ defmodule Jido.MCP.Server.RuntimeTest do
     end
   end
 
+  defmodule OpenInputAction do
+    use Jido.Action,
+      name: "open_input",
+      description: "Accepts a provider-owned input object",
+      schema: %{
+        "type" => "object",
+        "properties" => %{
+          "input" => %{
+            "type" => "object",
+            "properties" => %{
+              "provider_field" => %{"type" => "string"}
+            }
+          }
+        },
+        "required" => ["input"]
+      }
+
+    @impl true
+    def run(_params, _context), do: {:ok, %{ok: true}}
+  end
+
   defmodule EchoResource do
     @behaviour Jido.MCP.Server.Resource
 
@@ -174,6 +195,17 @@ defmodule Jido.MCP.Server.RuntimeTest do
     rendered = inspect(tool.inputSchema)
     assert rendered =~ "\"a\""
     assert rendered =~ "\"b\""
+  end
+
+  test "keeps an explicit nested JSON Schema object open while the tool input stays strict" do
+    assert {:ok, [tool], nil, _state} = Runtime.list_tools([OpenInputAction], %{})
+
+    assert tool.inputSchema["additionalProperties"] == false
+
+    refute Map.has_key?(
+             tool.inputSchema["properties"]["input"],
+             "additionalProperties"
+           )
   end
 
   test "fails closed when authorization callback raises" do
