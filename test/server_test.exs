@@ -65,8 +65,7 @@ defmodule Jido.MCP.ServerTest do
     children = Server.server_children(DemoServer, transport: :streamable_http)
     assert children == [{DemoServer, [transport: :streamable_http]}]
 
-    assert Server.plug_init_opts(DemoServer) ==
-             [handler: DemoServer, server_info: %{name: "demo-server", version: "1.0.0"}]
+    assert Server.plug_init_opts(DemoServer) == [server: DemoServer]
   end
 
   test "use macro publishes explicit allowlist and ExMCP definitions" do

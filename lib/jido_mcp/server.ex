@@ -26,9 +26,9 @@ defmodule Jido.MCP.Server do
     [{server_module, Keyword.put(server_opts, :transport, transport)}]
   end
 
-  @spec plug_init_opts(module()) :: keyword()
-  def plug_init_opts(server_module) when is_atom(server_module) do
-    [handler: server_module, server_info: server_module.__server_info__()]
+  @spec plug_init_opts(module(), keyword()) :: keyword()
+  def plug_init_opts(server_module, opts \\ []) when is_atom(server_module) and is_list(opts) do
+    Keyword.put_new(opts, :server, server_module)
   end
 
   defp normalize_publish!(publish, caller) do

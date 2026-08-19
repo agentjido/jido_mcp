@@ -63,8 +63,10 @@ defmodule Jido.MCP.ServerMacroTest do
 
     assert {DemoServer, [transport: :streamable_http]} in children
 
-    assert [handler: DemoServer, server_info: %{name: "demo", version: "1.0.0"}] ==
-             Server.plug_init_opts(DemoServer)
+    assert [server: DemoServer] == Server.plug_init_opts(DemoServer)
+
+    assert [server: DemoServer, request_context: :context] ==
+             Server.plug_init_opts(DemoServer, request_context: :context)
 
     assert {DemoServer, [transport: :stdio]} in Server.server_children(DemoServer)
   end

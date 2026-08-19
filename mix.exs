@@ -9,7 +9,7 @@ defmodule JidoMcp.MixProject do
     [
       app: :jido_mcp,
       version: @version,
-      elixir: "~> 1.18",
+      elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),

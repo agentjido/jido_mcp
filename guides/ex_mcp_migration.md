@@ -125,12 +125,30 @@ Jido.MCP.call_tool(:billing, "charge", arguments,
 The `use Jido.MCP.Server` macro and explicit `publish` allowlist stay. The macro
 now implements `ExMCP.Server.Handler`.
 
-For Phoenix or Plug, replace the Anubis plug:
+For Phoenix or Plug, use the Jido-owned host adapter. Do not reference
+`ExMCP.HttpPlug` from the host application:
 
 ```elixir
-forward "/mcp", ExMCP.HttpPlug,
-  Jido.MCP.Server.plug_init_opts(MyApp.MCPServer)
+forward "/mcp", Jido.MCP.Server.Plug,
+  Jido.MCP.Server.plug_init_opts(MyApp.MCPServer,
+    request_context: &MyApp.MCPAuth.request_context/2,
+    limits: [
+      allowed_hosts: ["mcp.example.com"],
+      allowed_origins: ["https://app.example.com"],
+      body_bytes: 1_000_000,
+      response_bytes: 1_000_000,
+      handler_deadline_ms: 10_000
+    ]
+  )
 ```
+
+The required `request_context` callback runs for every POST and DELETE before
+session resolution. It must re-authenticate the request and return only
+redacted `assigns`, `principal_id`, and `tenant_id` values. A session is bound
+to the stable identity values, and DELETE removes it. The adapter does not put
+the Plug connection, request headers, bearer tokens, or connector credentials
+in a Jido action context. Optional lifecycle hooks receive redacted request
+and session events with a bounded callback deadline.
 
 `Jido.MCP.Server.server_children/2` no longer returns an Anubis registry child.
 It returns the allowlisted server child only. `:streamable_http` remains a Jido
