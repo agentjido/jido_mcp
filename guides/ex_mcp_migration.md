@@ -198,12 +198,12 @@ and legacy HTTP+SSE support. A major release is the safe semantic-versioning
 choice unless all downstream users confirm that they do not use these paths.
 
 ExMCP currently brings `cowlib 2.19.0`, which is the newest compatible release.
-This package acknowledges only `EEF-CVE-2026-43966` and
-`EEF-CVE-2026-43969`. Plug and Cowboy reject the affected response header
-bytes, and ExMCP does not import the affected cookie encoder. The security
-tests lock these controls. `mix hex.audit` continues to fail for each new
-advisory. Remove the acknowledgements by 2026-09-12 or when a fixed `cowlib`
-release is available.
+This package acknowledges only `EEF-CVE-2026-43966`, `EEF-CVE-2026-43969`, and
+`EEF-CVE-2026-43971`. Plug and Cowboy reject the affected response header
+bytes, and ExMCP does not import the affected cookie or link encoders. The
+security tests lock these controls. `mix hex.audit` continues to fail for each
+new advisory. Remove the acknowledgements by 2026-09-12 or when a fixed
+`cowlib` release is available.
 
 Before release:
 
