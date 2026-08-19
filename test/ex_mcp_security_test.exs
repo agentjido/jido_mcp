@@ -13,7 +13,7 @@ defmodule Jido.MCP.ExMCPSecurityTest do
     end
   end
 
-  test "ExMCP does not import the encoder from EEF-CVE-2026-43969" do
+  test "ExMCP does not import the encoders from the acknowledged Cowlib advisories" do
     {:ok, modules} = :application.get_key(:ex_mcp, :modules)
 
     imports =
@@ -27,6 +27,7 @@ defmodule Jido.MCP.ExMCPSecurityTest do
       end)
 
     refute {:cow_cookie, :cookie, 1} in imports
+    refute {:cow_link, :link, 1} in imports
   end
 
   defp imports(path) do

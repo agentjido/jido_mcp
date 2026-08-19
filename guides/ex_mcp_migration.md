@@ -125,12 +125,61 @@ Jido.MCP.call_tool(:billing, "charge", arguments,
 The `use Jido.MCP.Server` macro and explicit `publish` allowlist stay. The macro
 now implements `ExMCP.Server.Handler`.
 
-For Phoenix or Plug, replace the Anubis plug:
+For Phoenix or Plug, use the Jido-owned host adapter. Do not reference
+`ExMCP.HttpPlug` from the host application:
 
 ```elixir
-forward "/mcp", ExMCP.HttpPlug,
-  Jido.MCP.Server.plug_init_opts(MyApp.MCPServer)
+forward "/mcp", Jido.MCP.Server.Plug,
+  Jido.MCP.Server.plug_init_opts(MyApp.MCPServer,
+    request_context: &MyApp.MCPAuth.request_context/2,
+    limits: [
+      allowed_hosts: ["mcp.example.com"],
+      allowed_origins: ["https://app.example.com"],
+      body_bytes: 1_000_000,
+      response_bytes: 1_000_000,
+      handler_deadline_ms: 10_000,
+      max_sessions_per_identity: 8,
+      idle_session_ttl_ms: 900_000
+    ]
+  )
 ```
+
+The required `request_context` callback runs for every POST and DELETE before
+session resolution. It must re-authenticate the request and return only
+redacted `assigns`, `principal_id`, and `tenant_id` values. A session is bound
+to the stable identity values, and DELETE removes it. The adapter does not put
+the Plug connection, request headers, bearer tokens, or connector credentials
+in a Jido action context. Optional lifecycle hooks receive redacted request
+and session events with a bounded callback deadline.
+
+`max_sessions_per_identity` atomically limits sessions for each
+principal-and-tenant pair. `idle_session_ttl_ms` closes idle tracked sessions.
+You can set either limit independently. Failed and abandoned initialize
+reservations release their admission slot.
+
+To reject and safely close the current session, return this host result:
+
+```elixir
+{:error,
+ %{invalidate_session: %{principal_id: principal_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+When no current principal is available, a trusted prior family can be used:
+
+```elixir
+{:error,
+ %{invalidate_session: %{session_family_id: grant_id, tenant_id: tenant_id},
+   reason: :revoked}}
+```
+
+The adapter checks this identity against the session binding before it closes
+the session. The family form checks the tracked prior exact identity first.
+Include a stable `session_family_id` in successful contexts to
+close a prior revision of one grant: a changed principal in the same tenant and
+family emits `:session_invalidated` with `:revision_changed`. A different
+family cannot close a guessed session ID. Other rejections use the normal
+generic response.
 
 `Jido.MCP.Server.server_children/2` no longer returns an Anubis registry child.
 It returns the allowlisted server child only. `:streamable_http` remains a Jido
@@ -149,12 +198,12 @@ and legacy HTTP+SSE support. A major release is the safe semantic-versioning
 choice unless all downstream users confirm that they do not use these paths.
 
 ExMCP currently brings `cowlib 2.19.0`, which is the newest compatible release.
-This package acknowledges only `EEF-CVE-2026-43966` and
-`EEF-CVE-2026-43969`. Plug and Cowboy reject the affected response header
-bytes, and ExMCP does not import the affected cookie encoder. The security
-tests lock these controls. `mix hex.audit` continues to fail for each new
-advisory. Remove the acknowledgements by 2026-09-12 or when a fixed `cowlib`
-release is available.
+This package acknowledges only `EEF-CVE-2026-43966`, `EEF-CVE-2026-43969`, and
+`EEF-CVE-2026-43971`. Plug and Cowboy reject the affected response header
+bytes, and ExMCP does not import the affected cookie or link encoders. The
+security tests lock these controls. `mix hex.audit` continues to fail for each
+new advisory. Remove the acknowledgements by 2026-09-12 or when a fixed
+`cowlib` release is available.
 
 Before release:
 

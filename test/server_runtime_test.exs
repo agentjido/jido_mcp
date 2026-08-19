@@ -33,6 +33,38 @@ defmodule Jido.MCP.Server.RuntimeTest do
     end
   end
 
+  defmodule FailureEnvelopeAction do
+    use Jido.Action,
+      name: "failure_envelope",
+      schema: []
+
+    @impl true
+    def run(_params, _context) do
+      {:ok, %{ok: false, error: %{code: :action_not_allowed, message: "Access is denied."}}}
+    end
+  end
+
+  defmodule OpenInputAction do
+    use Jido.Action,
+      name: "open_input",
+      description: "Accepts a provider-owned input object",
+      schema: %{
+        "type" => "object",
+        "properties" => %{
+          "input" => %{
+            "type" => "object",
+            "properties" => %{
+              "provider_field" => %{"type" => "string"}
+            }
+          }
+        },
+        "required" => ["input"]
+      }
+
+    @impl true
+    def run(_params, _context), do: {:ok, %{ok: true}}
+  end
+
   defmodule EchoResource do
     @behaviour Jido.MCP.Server.Resource
 
@@ -136,6 +168,53 @@ defmodule Jido.MCP.Server.RuntimeTest do
            }
   end
 
+  test "marks a structured failure envelope as an MCP tool error" do
+    state = %{assigns: %{}}
+
+    assert {:ok, response, ^state} =
+             Runtime.handle_tool_call(
+               [FailureEnvelopeAction],
+               "failure_envelope",
+               %{},
+               state,
+               AllowAllServer
+             )
+
+    assert response.structuredContent == %{
+             ok: false,
+             error: %{code: :action_not_allowed, message: "Access is denied."}
+           }
+
+    assert [%{type: "text", text: text}] = response.content
+
+    assert Jason.decode!(text) == %{
+             "ok" => false,
+             "error" => %{"code" => "action_not_allowed", "message" => "Access is denied."}
+           }
+
+    assert response.isError == true
+  end
+
+  test "loads a published action before a direct tool call" do
+    action = Jido.MCP.Actions.ListTools
+    :code.purge(action)
+    :code.delete(action)
+    refute Code.loaded?(action)
+
+    state = %{assigns: %{}}
+
+    assert {:ok, %{isError: true}, ^state} =
+             Runtime.handle_tool_call(
+               [action],
+               "mcp_tools_list",
+               %{},
+               state,
+               AllowAllServer
+             )
+
+    assert Code.loaded?(action)
+  end
+
   test "handles resource read" do
     state = %{assigns: %{}}
 
@@ -174,6 +253,17 @@ defmodule Jido.MCP.Server.RuntimeTest do
     rendered = inspect(tool.inputSchema)
     assert rendered =~ "\"a\""
     assert rendered =~ "\"b\""
+  end
+
+  test "keeps an explicit nested JSON Schema object open while the tool input stays strict" do
+    assert {:ok, [tool], nil, _state} = Runtime.list_tools([OpenInputAction], %{})
+
+    assert tool.inputSchema["additionalProperties"] == false
+
+    refute Map.has_key?(
+             tool.inputSchema["properties"]["input"],
+             "additionalProperties"
+           )
   end
 
   test "fails closed when authorization callback raises" do

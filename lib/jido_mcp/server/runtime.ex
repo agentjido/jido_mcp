@@ -195,7 +195,8 @@ defmodule Jido.MCP.Server.Runtime do
   defp find_module(modules, function, value) do
     case Enum.find(
            modules,
-           &(function_exported?(&1, function, 0) and apply(&1, function, []) == value)
+           &(Code.ensure_loaded?(&1) and function_exported?(&1, function, 0) and
+               apply(&1, function, []) == value)
          ) do
       nil -> {:error, :not_found}
       module -> {:ok, module}
@@ -207,6 +208,15 @@ defmodule Jido.MCP.Server.Runtime do
       content: [%{type: "text", text: encoded_text(output)}],
       structuredContent: output
     }
+    |> maybe_mark_tool_error(output)
+  end
+
+  # A structured tool envelope can preserve product error data and still use
+  # the MCP result error signal. Hosts use this for `{ok: false, error: ...}`.
+  defp maybe_mark_tool_error(response, output) do
+    if Map.get(output, :ok, Map.get(output, "ok")) == false,
+      do: Map.put(response, :isError, true),
+      else: response
   end
 
   defp tool_error_response do
@@ -275,10 +285,22 @@ defmodule Jido.MCP.Server.Runtime do
 
   defp action_input_schema(module) do
     module.schema()
-    |> Schema.to_json_schema(strict: true)
+    |> Schema.to_json_schema()
+    |> strict_tool_input()
   rescue
     _exception -> %{"type" => "object", "properties" => %{}, "required" => []}
   end
+
+  # Tool arguments are always closed at the root. Nested schemas keep the
+  # module-defined JSON Schema semantics, including intentionally open objects.
+  defp strict_tool_input(%{type: :object} = schema),
+    do: Map.put(schema, :additionalProperties, false)
+
+  defp strict_tool_input(%{"type" => "object"} = schema),
+    do: Map.put(schema, "additionalProperties", false)
+
+  defp strict_tool_input(schema),
+    do: Map.put(schema, "additionalProperties", false)
 
   defp maybe_description(module) do
     if function_exported?(module, :description, 0), do: module.description(), else: nil
