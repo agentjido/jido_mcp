@@ -5,9 +5,10 @@ not a dependency and there is no backend selection setting.
 
 ## Qualified version
 
-`jido_mcp` pins ExMCP `1.0.0-rc.8` from Hex. This exact version is used by the
-tool, resource, prompt, retry, cancellation, timeout, credential isolation, and
-process cleanup tests.
+`jido_mcp` requires stable ExMCP `~> 1.0` from Hex. The 2.0 release candidate
+was qualified with ExMCP `1.0.0`. Tool, resource, prompt, retry, cancellation,
+timeout, credential isolation, session, Plug, and process cleanup tests use
+this stable release.
 
 ## Public client API
 
@@ -92,10 +93,9 @@ settings, request limits, or retry settings. Put these settings in the
 documented endpoint fields. Operation and readiness timeouts must be finite
 positive integers.
 
-ExMCP `1.0.0-rc.8` sends its own legacy `clientInfo` during initialization. It
-does not use the endpoint `client_info` value in that request. It also uses
-endpoint client capabilities only in the modern discovery flow. Test servers
-that require a specific legacy client identity before the release.
+ExMCP owns the initialization identity. The Jido adapter does not replace the
+ExMCP client identity with the endpoint `client_info` value. Test a server that
+requires a specific legacy client identity before the upgrade.
 
 ## Tool retry safety
 
@@ -192,10 +192,9 @@ request context, and safe transport identity fields. Code that pattern matches
 
 ## Release decision
 
-The normal client call API and envelopes remain compatible. Full removal still
-changes the documented server plug, callback context type, raw response type,
-and legacy HTTP+SSE support. A major release is the safe semantic-versioning
-choice unless all downstream users confirm that they do not use these paths.
+The normal client call API and envelopes remain compatible. The server Plug,
+callback context type, raw response type, and legacy HTTP+SSE support changed.
+Version 2.0 is the required major release for these changes.
 
 ExMCP currently brings `cowlib 2.19.0`, which is the newest compatible release.
 This package acknowledges only `EEF-CVE-2026-43966`, `EEF-CVE-2026-43969`, and
@@ -208,8 +207,19 @@ new advisory. Remove the acknowledgements by 2026-09-12 or when a fixed
 Before release:
 
 - run the `jido_connect_mcp` and host integration suites;
-- replace the ExMCP release candidate with stable 1.0 when it is available;
 - review the temporary `cowlib` advisory controls for the target deployments;
 - test any server that checks the legacy client identity;
 - complete a production soak for client, session, cancellation, and subprocess
   cleanup.
+
+## Maintenance after 2.0
+
+Version 2.0 freezes the public API listed in
+[`public_api.md`](public_api.md). New protocol and server work goes to ExMCP.
+New connector work goes to Jido Connect. ACP and coding-agent lifecycle work
+goes to Jido Harness. `jido_mcp` accepts only security fixes and severe
+compatibility fixes after the final active release.
+
+Formal deprecation is later work. Do not retire the Hex package until the Jido
+Connect replacement is public, its migration path is proven, and the announced
+support window is complete.
