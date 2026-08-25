@@ -12,6 +12,28 @@
 client and server protocol runtime. The public Jido API keeps endpoint pooling,
 response envelopes, actions, and explicit server allowlists stable.
 
+## Maintenance Status
+
+Version 2.0 is the final active major release line for `jido_mcp`. It replaces
+Anubis with stable ExMCP and freezes the current Jido compatibility surface.
+After this release, the package accepts security fixes and severe
+compatibility fixes. It does not accept new features.
+
+Use the package owners for new work:
+
+- Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
+  transports, resources, prompts, and protocol behavior.
+- Use [Jido Connect](https://github.com/agentjido/jido_connect) for connector
+  discovery and safe MCP tool listing and calls.
+- Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
+  coding-agent lifecycles.
+
+This package is in maintenance mode. It is not yet deprecated on Hex. Formal
+deprecation can start only after the Jido Connect replacement is public and
+has a completed support window. See the
+[public API freeze](guides/public_api.md) and the
+[ExMCP migration guide](guides/ex_mcp_migration.md).
+
 ## Features
 
 - Shared pooled MCP clients per configured endpoint
@@ -26,7 +48,7 @@ response envelopes, actions, and explicit server allowlists stable.
 ```elixir
 def deps do
   [
-    {:jido_mcp, "~> 0.1"}
+    {:jido_mcp, "~> 2.0"}
   ]
 end
 ```

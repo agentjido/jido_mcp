@@ -1,9 +1,9 @@
 defmodule JidoMcp.MixProject do
   use Mix.Project
 
-  @version "1.1.1"
+  @version "2.0.0"
   @source_url "https://github.com/agentjido/jido_mcp"
-  @description "MCP integration package for the Jido ecosystem"
+  @description "Maintenance-mode Jido compatibility layer for MCP, powered by ExMCP"
 
   def project do
     [
@@ -52,7 +52,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:ex_mcp, "1.0.0-rc.8"},
+      {:ex_mcp, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},
@@ -93,7 +93,13 @@ defmodule JidoMcp.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      extras: ["README.md", "guides/ex_mcp_migration.md", "CHANGELOG.md", "LICENSE"],
+      extras: [
+        "README.md",
+        "guides/ex_mcp_migration.md",
+        "guides/public_api.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md", "LICENSE"]
     ]
   end

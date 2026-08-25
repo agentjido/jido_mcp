@@ -36,7 +36,7 @@ defmodule Jido.MCP.Plugins.MCP do
     description: "Model Context Protocol integration",
     category: "mcp",
     tags: ["mcp", "tools", "resources", "prompts"],
-    vsn: to_string(Application.spec(:jido_mcp, :vsn) || "0.1.1")
+    vsn: to_string(Application.spec(:jido_mcp, :vsn) || "2.0.0")
 
   @impl Jido.Plugin
   def mount(_agent, config) do
