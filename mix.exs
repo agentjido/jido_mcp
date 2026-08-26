@@ -88,6 +88,7 @@ defmodule JidoMcp.MixProject do
         "README.md",
         "guides/ex_mcp_migration.md",
         "guides/public_api.md",
+        "guides/deprecation_plan.md",
         "CHANGELOG.md",
         "LICENSE"
       ],
