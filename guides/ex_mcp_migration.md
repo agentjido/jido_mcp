@@ -206,7 +206,7 @@ new advisory. Remove the acknowledgements by 2026-09-12 or when a fixed
 
 Before release:
 
-- run the `jido_connect_mcp` and host integration suites;
+- run the core Jido Connect MCP bridge and supported host integration suites;
 - review the temporary `cowlib` advisory controls for the target deployments;
 - test any server that checks the legacy client identity;
 - complete a production soak for client, session, cancellation, and subprocess
@@ -222,4 +222,6 @@ compatibility fixes after the final active release.
 
 Formal deprecation is later work. Do not retire the Hex package until the Jido
 Connect replacement is public, its migration path is proven, and the announced
-support window is complete.
+support window is complete. The
+[draft deprecation plan](deprecation_plan.md) defines the replacement map,
+approval inputs, and repository retention policy without activating a notice.

@@ -30,9 +30,13 @@ Use the package owners for new work:
 
 This package is in maintenance mode. It is not yet deprecated on Hex. Formal
 deprecation can start only after the Jido Connect replacement is public and
-has a completed support window. See the
+proven, and after the package owners approve the notice and support window.
+Package retirement is a separate decision after that window ends. See the
 [public API freeze](guides/public_api.md) and the
-[ExMCP migration guide](guides/ex_mcp_migration.md).
+[ExMCP migration guide](guides/ex_mcp_migration.md). The
+[draft deprecation plan](guides/deprecation_plan.md) records the inactive
+announcement template, gates, support-window inputs, and repository retention
+policy.
 
 ## Features
 

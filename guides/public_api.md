@@ -94,4 +94,7 @@ they are not named in the supported tables.
 - ACP and coding-agent lifecycle work goes to Jido Harness.
 
 Formal package deprecation is a later decision. It needs a public Jido Connect
-replacement, a stated support window, and explicit release approval.
+replacement, proven replacement paths, a stated support window, and explicit
+release approval. The [draft deprecation plan](deprecation_plan.md) records the
+replacement map and the separate announcement, support, retirement, and
+repository-retention gates.
