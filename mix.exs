@@ -15,19 +15,6 @@ defmodule JidoMcp.MixProject do
       aliases: aliases(),
       test_coverage: [summary: [threshold: 85]],
 
-      # Cowlib 2.19.0 is the newest compatible release. Plug and Cowboy reject
-      # the response-header bytes in EEF-CVE-2026-43966, and ExMCP does not call
-      # the Cowlib encoders in EEF-CVE-2026-43969 or EEF-CVE-2026-43971. Tests
-      # lock these controls.
-      # Review these exceptions by 2026-09-12 or when a fixed Cowlib is released.
-      hex: [
-        ignore_advisories: [
-          "EEF-CVE-2026-43966",
-          "EEF-CVE-2026-43969",
-          "EEF-CVE-2026-43971"
-        ]
-      ],
-
       # Documentation
       name: "Jido MCP",
       description: @description,
@@ -52,7 +39,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:ex_mcp, "1.0.0-rc.8"},
+      {:ex_mcp, "1.1.1"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},
