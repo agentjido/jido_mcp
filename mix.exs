@@ -14,6 +14,10 @@ defmodule JidoMcp.MixProject do
       deps: deps(),
       aliases: aliases(),
       test_coverage: [summary: [threshold: 85]],
+      # Cowlib does not have patched Hex releases for these advisories.
+      hex: [
+        ignore_advisories: ["CVE-2026-43971", "CVE-2026-43969", "CVE-2026-43966"]
+      ],
 
       # Documentation
       name: "Jido MCP",
