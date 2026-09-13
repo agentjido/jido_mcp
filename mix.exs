@@ -43,7 +43,7 @@ defmodule JidoMcp.MixProject do
   defp deps do
     [
       {:jido, "~> 2.3"},
-      {:ex_mcp, "1.1.1"},
+      {:ex_mcp, "1.3.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18"},
       {:jsv, "~> 0.19"},
