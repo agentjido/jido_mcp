@@ -22,13 +22,13 @@ There is no one-package replacement for all `jido_mcp` features.
 | Endpoint registration and the shared client pool | Host-supervised ExMCP clients |
 | Jido Action v2 modules | Host-owned Actions that call ExMCP |
 | Dynamic Jido AI proxy Actions | No direct replacement. Use reviewed connector operations instead. |
-| Reviewed connector discovery, calls, scopes, policy, approval, schema drift, notifications, and connection leases | Jido Connect v3 after a stable release is public |
-| `Jido.MCP.Plugins.MCP` and `Jido.MCP.JidoAI.Plugins.MCPAI` | No drop-in replacement. Use host integration code with ExMCP or stable Jido Connect v3. |
+| Managed MCP connections, reviewed connector discovery, calls, scopes, policy, approval, schema drift, notifications, and connection leases | Jido Connect |
+| `Jido.MCP.Plugins.MCP` and `Jido.MCP.JidoAI.Plugins.MCPAI` | No drop-in replacement. Use host integration code with ExMCP or Jido Connect. |
 | ACP and coding-agent process lifecycles | Jido Harness |
 
-Jido Connect v3 is still maintainer development at the deprecation date. It is
-not a public Hex replacement. Use ExMCP directly when an application must move
-now. Connect does not replace every dynamic proxy, plugin, or server API.
+Use ExMCP for direct MCP protocol, client, server, and transport work. Use Jido
+Connect for managed MCP connections and tool calls. Jido Connect does not
+replace every dynamic proxy, plugin, or server API.
 
 ## Final Release
 
@@ -49,7 +49,7 @@ window, no later dependency update is planned.
 
 The retirement reason is `deprecated`. The retirement message is:
 
-> Deprecated. Use ExMCP for MCP protocol work. See the jido_mcp migration guide.
+> Deprecated. Use ExMCP for direct MCP protocol work and Jido Connect for managed MCP connections and tool calls.
 
 Retirement does not delete a package version. Existing lockfiles can still
 fetch it. New dependency resolution shows a retirement warning.

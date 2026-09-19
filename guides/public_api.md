@@ -61,8 +61,9 @@ not move to Jido Connect.
 | `Jido.MCP.Server.Resource` | `name/0`, `uri/0`, `description/0`, `mime_type/0`, and `read/2` callbacks | Supported behavior contract |
 | `Jido.MCP.Server.Prompt` | `name/0`, `description/0`, `arguments_schema/0`, and `messages/2` callbacks | Supported behavior contract |
 
-Server publication stays in `jido_mcp` for compatibility. It does not move to
-Jido Connect. Use ExMCP for new server and protocol work.
+Server publication stays in `jido_mcp` for compatibility. Use ExMCP for new
+server and direct protocol work. Use Jido Connect for managed MCP connections
+and tool calls.
 
 ## Internal Modules
 

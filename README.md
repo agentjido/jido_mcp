@@ -22,12 +22,12 @@ They remain available for existing lockfiles.
 Version 2.0 replaces Anubis with stable ExMCP and records the final Jido
 compatibility surface.
 
-Use the package owners for new work:
+Use these packages for new work:
 
 - Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
   transports, resources, prompts, and protocol behavior.
 - Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
-  connector discovery and calls after a stable Connect v3 release is public.
+  MCP connections, connector discovery, and tool calls.
 - Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
   coding-agent lifecycles.
 
