@@ -12,6 +12,30 @@
 client and server protocol runtime. The public Jido API keeps endpoint pooling,
 response envelopes, actions, and explicit server allowlists stable.
 
+## Deprecated
+
+`jido_mcp` is deprecated. Version 2.0.0 is the final release. The package will
+not receive new features, compatibility fixes, security fixes, or new
+versions. Published releases are retired on Hex with the `deprecated` reason.
+They remain available for existing lockfiles.
+
+Version 2.0 replaces Anubis with stable ExMCP and records the final Jido
+compatibility surface.
+
+Use the package owners for new work:
+
+- Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
+  transports, resources, prompts, and protocol behavior.
+- Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
+  connector discovery and calls after a stable Connect v3 release is public.
+- Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
+  coding-agent lifecycles.
+
+There is no support window and no promise of a replacement for every Jido API.
+See the [final API inventory](guides/public_api.md), the
+[ExMCP migration guide](guides/ex_mcp_migration.md), and the
+[deprecation record](guides/deprecation_plan.md).
+
 ## Features
 
 - Shared pooled MCP clients per configured endpoint
@@ -21,12 +45,15 @@ response envelopes, actions, and explicit server allowlists stable.
 - MCP server bridge (`use Jido.MCP.Server`) with explicit allowlists and a
   Jido-owned Plug host adapter
 
-## Installation
+## Legacy Installation
+
+Do not add `jido_mcp` to a new application. This example is for existing
+applications that must complete a migration.
 
 ```elixir
 def deps do
   [
-    {:jido_mcp, "~> 0.1"}
+    {:jido_mcp, "~> 2.0"}
   ]
 end
 ```
