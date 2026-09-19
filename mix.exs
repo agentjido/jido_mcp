@@ -3,7 +3,7 @@ defmodule JidoMcp.MixProject do
 
   @version "2.0.0"
   @source_url "https://github.com/agentjido/jido_mcp"
-  @description "Maintenance-mode Jido compatibility layer for MCP, powered by ExMCP"
+  @description "Deprecated Jido compatibility layer for MCP, powered by ExMCP"
 
   def project do
     [
@@ -16,7 +16,7 @@ defmodule JidoMcp.MixProject do
       test_coverage: [summary: [threshold: 85]],
       # Cowlib does not have patched Hex releases for these advisories.
       hex: [
-        ignore_advisories: ["CVE-2026-43971", "CVE-2026-43969", "CVE-2026-43966"]
+        ignore_advisories: ["CVE-2026-43969", "CVE-2026-43966"]
       ],
 
       # Documentation

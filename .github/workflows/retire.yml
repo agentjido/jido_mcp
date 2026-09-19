@@ -1,0 +1,30 @@
+name: Retire Hex Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published jido_mcp version to retire"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  retire:
+    name: Retire jido_mcp ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          elixir-version: "1.19"
+      - name: Retire release on Hex
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+          JIDO_MCP_VERSION: ${{ inputs.version }}
+        run: >-
+          mix hex.retire jido_mcp "$JIDO_MCP_VERSION" deprecated
+          --message "Deprecated. Use ExMCP for MCP protocol work. See the jido_mcp migration guide."

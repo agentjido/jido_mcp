@@ -12,31 +12,29 @@
 client and server protocol runtime. The public Jido API keeps endpoint pooling,
 response envelopes, actions, and explicit server allowlists stable.
 
-## Maintenance Status
+## Deprecated
 
-Version 2.0 is the final active major release line for `jido_mcp`. It replaces
-Anubis with stable ExMCP and freezes the current Jido compatibility surface.
-After this release, the package accepts security fixes and severe
-compatibility fixes. It does not accept new features.
+`jido_mcp` is deprecated. Version 2.0.0 is the final release. The package will
+not receive new features, compatibility fixes, security fixes, or new
+versions. Published releases are retired on Hex with the `deprecated` reason.
+They remain available for existing lockfiles.
+
+Version 2.0 replaces Anubis with stable ExMCP and records the final Jido
+compatibility surface.
 
 Use the package owners for new work:
 
 - Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
   transports, resources, prompts, and protocol behavior.
-- Use [Jido Connect](https://github.com/agentjido/jido_connect) for connector
-  discovery and safe MCP tool listing and calls.
+- Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
+  connector discovery and calls after a stable Connect v3 release is public.
 - Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
   coding-agent lifecycles.
 
-This package is in maintenance mode. It is not yet deprecated on Hex. Formal
-deprecation can start only after the Jido Connect replacement is public and
-proven, and after the package owners approve the notice and support window.
-Package retirement is a separate decision after that window ends. See the
-[public API freeze](guides/public_api.md) and the
-[ExMCP migration guide](guides/ex_mcp_migration.md). The
-[draft deprecation plan](guides/deprecation_plan.md) records the inactive
-announcement template, gates, support-window inputs, and repository retention
-policy.
+There is no support window and no promise of a replacement for every Jido API.
+See the [final API inventory](guides/public_api.md), the
+[ExMCP migration guide](guides/ex_mcp_migration.md), and the
+[deprecation record](guides/deprecation_plan.md).
 
 ## Features
 
@@ -47,7 +45,10 @@ policy.
 - MCP server bridge (`use Jido.MCP.Server`) with explicit allowlists and a
   Jido-owned Plug host adapter
 
-## Installation
+## Legacy Installation
+
+Do not add `jido_mcp` to a new application. This example is for existing
+applications that must complete a migration.
 
 ```elixir
 def deps do

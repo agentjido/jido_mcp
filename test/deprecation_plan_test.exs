@@ -3,15 +3,15 @@ defmodule Jido.MCP.DeprecationPlanTest do
 
   @root Path.expand("..", __DIR__)
 
-  test "the prepared deprecation plan remains inactive" do
+  test "the package deprecation is explicit" do
     guide = File.read!(Path.join(@root, "guides/deprecation_plan.md"))
     readme = File.read!(Path.join(@root, "README.md"))
     mix_project = File.read!(Path.join(@root, "mix.exs"))
 
-    assert guide =~ "Status: Draft and inactive"
-    assert guide =~ "No support window is active"
-    assert guide =~ "explicit retirement approval"
-    assert readme =~ "It is not yet deprecated on Hex"
+    assert guide =~ "Status: Active"
+    assert guide =~ "There is no support window"
+    assert guide =~ "deprecated"
+    assert readme =~ "`jido_mcp` is deprecated"
     refute mix_project =~ "deprecated:"
     refute mix_project =~ "retired:"
   end

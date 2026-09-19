@@ -1,11 +1,10 @@
-# Jido MCP 2.0 Public API Freeze
+# Jido MCP 2.0 Final API Inventory
 
-Version 2.0 freezes the current `jido_mcp` product surface. It does not add new
-MCP features. Jido Action v2 remains the Action contract.
+Version 2.0.0 is the final `jido_mcp` release. The package is deprecated and
+will not receive updates. Jido Action v2 is the final Action contract.
 
-The tables below are the release inventory. A supported API can receive a
-security fix or a severe compatibility fix. A frozen API stays available, but
-new feature work goes to its replacement owner.
+The tables below record the final release inventory. They do not create a
+support or update promise.
 
 ## Client API
 
@@ -58,7 +57,7 @@ not move to Jido Connect.
 | --- | --- | --- |
 | `Jido.MCP.Server` | `use Jido.MCP.Server`, `server_children/2`, `plug_init_opts/2` | Supported and frozen |
 | `Jido.MCP.Server.Plug` | `validate_options/1`, `init/1`, `call/2` | Supported host adapter |
-| `Jido.MCP.Server.Context` | `new/1` and the public struct | Supported callback context |
+| `Jido.MCP.Server.Context` | The public struct passed to callbacks | Final callback context |
 | `Jido.MCP.Server.Resource` | `name/0`, `uri/0`, `description/0`, `mime_type/0`, and `read/2` callbacks | Supported behavior contract |
 | `Jido.MCP.Server.Prompt` | `name/0`, `description/0`, `arguments_schema/0`, and `messages/2` callbacks | Supported behavior contract |
 
@@ -67,8 +66,7 @@ Jido Connect. Use ExMCP for new server and protocol work.
 
 ## Internal Modules
 
-The following modules have `@moduledoc false` and are internal. They can change
-for a security or severe compatibility fix:
+The following modules have `@moduledoc false` and are internal:
 
 ```text
 Jido.MCP.Application
@@ -93,8 +91,5 @@ they are not named in the supported tables.
 - Connector discovery and safe MCP tool calls go to Jido Connect.
 - ACP and coding-agent lifecycle work goes to Jido Harness.
 
-Formal package deprecation is a later decision. It needs a public Jido Connect
-replacement, proven replacement paths, a stated support window, and explicit
-release approval. The [draft deprecation plan](deprecation_plan.md) records the
-replacement map and the separate announcement, support, retirement, and
-repository-retention gates.
+The package is deprecated. The [deprecation record](deprecation_plan.md)
+records the replacement map and repository-retention decision.
