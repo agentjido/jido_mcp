@@ -51,6 +51,7 @@ jobs:
     uses: agentjido/github-actions/.github/workflows/jido-release.yml@v5
     with:
       operation: ${{ inputs.operation || 'auto' }}
+      elixir_version: "1.19"
       tag_name: ${{ inputs.tag_name || '' }}
       dry_run: ${{ inputs.dry_run || false }}
       hex_dry_run: ${{ inputs.hex_dry_run || false }}
