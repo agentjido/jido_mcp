@@ -30,6 +30,21 @@ All notable changes to this project will be documented in this file.
 
 <!-- changelog -->
 
+## [v2.0.0](https://github.com/agentjido/jido_mcp/compare/v2.0.0...v2.0.0) (2026-09-19)
+### Breaking Changes:
+
+* replace Anubis with ExMCP (#48) by mikehostetler
+
+
+
+### Features:
+
+* server: add stable ExMCP host plug (#50) by mikehostetler
+
+### Bug Fixes:
+
+* deps: update vulnerable dependencies (#57) by mikehostetler
+
 ## [v1.1.1](https://github.com/agentjido/jido_mcp/compare/v1.1.0...v1.1.1) (2026-08-10)
 
 
