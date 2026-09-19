@@ -216,8 +216,8 @@ Before release:
 
 Version 2.0.0 records the final API listed in
 [`public_api.md`](public_api.md). The package is deprecated and all published
-versions are retired on Hex. No later updates are planned. New protocol and
-server work goes to ExMCP. New managed connector work can go to Jido Connect
-after its stable v3 release is public. ACP and coding-agent lifecycle work goes
-to Jido Harness. The [deprecation record](deprecation_plan.md) gives the full
+versions are retired on Hex. No later updates are planned. New direct MCP
+protocol and server work goes to ExMCP. New managed MCP connections and tool
+calls go to Jido Connect. ACP and coding-agent lifecycle work goes to Jido
+Harness. The [deprecation record](deprecation_plan.md) gives the full
 replacement map.

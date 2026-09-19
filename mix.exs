@@ -3,7 +3,7 @@ defmodule JidoMcp.MixProject do
 
   @version "2.0.0"
   @source_url "https://github.com/agentjido/jido_mcp"
-  @description "Deprecated Jido compatibility layer for MCP, powered by ExMCP"
+  @description "Deprecated Jido MCP layer; use ExMCP or Jido Connect"
 
   def project do
     [

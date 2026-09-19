@@ -27,4 +27,4 @@ jobs:
           JIDO_MCP_VERSION: ${{ inputs.version }}
         run: >-
           mix hex.retire jido_mcp "$JIDO_MCP_VERSION" deprecated
-          --message "Deprecated. Use ExMCP for MCP protocol work. See the jido_mcp migration guide."
+          --message "Deprecated. Use ExMCP for direct MCP protocol work and Jido Connect for managed MCP connections and tool calls."
