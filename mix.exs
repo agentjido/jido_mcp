@@ -42,7 +42,7 @@ defmodule JidoMcp.MixProject do
 
   defp deps do
     [
-      {:jido, "~> 2.4", override: true},
+      {:jido, "~> 2.4"},
       {:ex_mcp, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:zoi, "~> 0.18.11"},
