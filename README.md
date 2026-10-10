@@ -408,3 +408,7 @@ Implement those behaviours for items listed in `publish.resources` and `publish.
 ```bash
 mix test
 ```
+
+## Local Documentation
+
+Run `mix docs` to generate HTML and Markdown documentation in `doc/`, including Markdown pages and `llms.txt`.

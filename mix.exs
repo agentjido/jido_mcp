@@ -50,7 +50,7 @@ defmodule JidoMcp.MixProject do
       {:git_ops, "~> 2.10", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false},
-      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
+      {:ex_doc, "~> 0.40.4", only: :dev, runtime: false},
       {:mimic, "~> 2.0", only: :test}
     ]
   end
