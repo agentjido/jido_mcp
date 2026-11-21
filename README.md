@@ -15,6 +15,8 @@
 >
 > - Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
 >   transports, resources, prompts, and protocol behavior.
+> - See [ArborMCP](https://github.com/trust-arbor/arbor_mcp) for the successor
+>   to ExMCP 1.x. Its Hex package is [`arbor_mcp`](https://hex.pm/packages/arbor_mcp).
 > - Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
 >   MCP connections, connector discovery, and tool calls.
 > - Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
