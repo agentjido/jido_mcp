@@ -1,5 +1,32 @@
 # Jido.MCP
 
+> [!IMPORTANT]
+> **Deprecated. Version 2.0.0 is the final release.**
+>
+> The package will
+> not receive new features, compatibility fixes, security fixes, or new
+> versions. Published releases are retired on Hex with the `deprecated` reason.
+> They remain available for existing lockfiles.
+>
+> Version 2.0 replaces Anubis with stable ExMCP and records the final Jido
+> compatibility surface.
+>
+> Use these packages for new work:
+>
+> - Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
+>   transports, resources, prompts, and protocol behavior.
+> - See [ArborMCP](https://github.com/trust-arbor/arbor_mcp) for the successor
+>   to ExMCP 1.x. Its Hex package is [`arbor_mcp`](https://hex.pm/packages/arbor_mcp).
+> - Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
+>   MCP connections, connector discovery, and tool calls.
+> - Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
+>   coding-agent lifecycles.
+>
+> There is no support window and no promise of a replacement for every Jido API.
+> See the [final API inventory](guides/public_api.md), the
+> [ExMCP migration guide](guides/ex_mcp_migration.md), and the
+> [deprecation record](guides/deprecation_plan.md).
+
 [![Hex.pm](https://img.shields.io/hexpm/v/jido_mcp.svg)](https://hex.pm/packages/jido_mcp)
 [![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/jido_mcp/)
 [![CI](https://github.com/agentjido/jido_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/agentjido/jido_mcp/actions/workflows/ci.yml)
@@ -11,30 +38,6 @@
 `jido_mcp` integrates MCP servers into the Jido ecosystem. ExMCP provides the
 client and server protocol runtime. The public Jido API keeps endpoint pooling,
 response envelopes, actions, and explicit server allowlists stable.
-
-## Deprecated
-
-`jido_mcp` is deprecated. Version 2.0.0 is the final release. The package will
-not receive new features, compatibility fixes, security fixes, or new
-versions. Published releases are retired on Hex with the `deprecated` reason.
-They remain available for existing lockfiles.
-
-Version 2.0 replaces Anubis with stable ExMCP and records the final Jido
-compatibility surface.
-
-Use these packages for new work:
-
-- Use [ExMCP](https://hex.pm/packages/ex_mcp) for MCP clients, servers,
-  transports, resources, prompts, and protocol behavior.
-- Use [Jido Connect](https://github.com/agentjido/jido_connect) for managed
-  MCP connections, connector discovery, and tool calls.
-- Use [Jido Harness](https://github.com/agentjido/jido_harness) for ACP and
-  coding-agent lifecycles.
-
-There is no support window and no promise of a replacement for every Jido API.
-See the [final API inventory](guides/public_api.md), the
-[ExMCP migration guide](guides/ex_mcp_migration.md), and the
-[deprecation record](guides/deprecation_plan.md).
 
 ## Features
 

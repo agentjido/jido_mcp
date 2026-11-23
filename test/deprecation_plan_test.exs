@@ -11,7 +11,7 @@ defmodule Jido.MCP.DeprecationPlanTest do
     assert guide =~ "Status: Active"
     assert guide =~ "There is no support window"
     assert guide =~ "deprecated"
-    assert readme =~ "`jido_mcp` is deprecated"
+    assert readme =~ "> **Deprecated."
     refute mix_project =~ "deprecated:"
     refute mix_project =~ "retired:"
   end
